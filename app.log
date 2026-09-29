@@ -1,0 +1,38 @@
+[2026-09-29 10:24:54] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-09-29 10:24:56] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 10:24:58] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 10:25:02] [INFO]: QUIZ_START: user_id=G23937, total=11
+[2026-09-29 10:26:12] [INFO]: QUIZ_ANSWER: user=G23937, term=真正性, ans=ア, correct=False
+[2026-09-29 10:26:18] [INFO]: QUIZ_ANSWER: user=G23937, term=否認防止, ans=ウ, correct=True
+[2026-09-29 10:26:22] [INFO]: QUIZ_ANSWER: user=G23937, term=機能要件, ans=エ, correct=False
+[2026-09-29 10:26:26] [INFO]: QUIZ_ANSWER: user=G23937, term=可用性, ans=イ, correct=False
+[2026-09-29 10:26:29] [INFO]: QUIZ_ANSWER: user=G23937, term=責任追跡性, ans=ウ, correct=False
+[2026-09-29 10:26:33] [INFO]: QUIZ_ANSWER: user=G23937, term=信頼性, ans=エ, correct=False
+[2026-09-29 10:26:36] [INFO]: QUIZ_ANSWER: user=G23937, term=DFD, ans=エ, correct=False
+[2026-09-29 10:26:39] [INFO]: QUIZ_ANSWER: user=G23937, term=機密性, ans=エ, correct=False
+[2026-09-29 10:26:42] [INFO]: QUIZ_ANSWER: user=G23937, term=E-R図, ans=イ, correct=False
+[2026-09-29 10:26:45] [INFO]: QUIZ_ANSWER: user=G23937, term=UML, ans=エ, correct=False
+[2026-09-29 10:26:48] [INFO]: QUIZ_ANSWER: user=G23937, term=完全性, ans=ウ, correct=False
+[2026-09-29 10:27:25] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 10:27:26] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 10:28:51] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-09-29 10:28:56] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 10:28:58] [INFO]: VIEW_TERM: user_id=G23937, term=2の補数
+[2026-09-29 10:29:10] [INFO]: VIEW_TERM: user_id=G23937, term=AM
+[2026-09-29 10:29:14] [INFO]: VIEW_TERM: user_id=G23937, term=AM
+[2026-09-29 10:29:17] [INFO]: VIEW_TERM: user_id=G23937, term=BCD
+[2026-09-29 14:46:21] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-09-29 14:46:23] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 14:46:24] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 15:59:35] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-09-29 15:59:38] [INFO]: QUIZ_START: user_id=G23937, total=5
+[2026-09-29 15:59:39] [INFO]: QUIZ_ANSWER: user=G23937, term=責任追跡性, ans=ア, correct=False
+[2026-09-29 15:59:47] [INFO]: QUIZ_ANSWER: user=G23937, term=真正性, ans=イ, correct=True
+[2026-09-29 15:59:51] [INFO]: QUIZ_ANSWER: user=G23937, term=機密性, ans=エ, correct=False
+[2026-09-29 15:59:54] [INFO]: QUIZ_ANSWER: user=G23937, term=DFD, ans=ウ, correct=False
+[2026-09-29 15:59:57] [INFO]: QUIZ_ANSWER: user=G23937, term=否認防止, ans=ウ, correct=True
+[2026-09-29 16:00:03] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 16:00:13] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 16:01:12] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-09-29 16:01:17] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-09-29 16:01:17] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
