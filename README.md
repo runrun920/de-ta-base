@@ -17,7 +17,17 @@
 
 ---
 
-## 🚀 実行手順
+## 実行手順
 
 ### 1. 準備（初回のみ）
+git clone https://github.com/runrun920/de-ta-base.git
+cd de-ta-base
+
+### 2. 必要なものを入れる
 pip3 install pandas streamlit
+
+### 3. データベースを作る
+python3 make_db.py
+
+### 3. アプリを起動
+streamlit run app.py
