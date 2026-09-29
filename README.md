@@ -1,17 +1,23 @@
-GitHubにデータ生成用プログラムをアップしました！
-手元のPCで動かせるかテストしてみてほしいです 🙏
+【データ元】 fe_study_master.csv
+       │
+       ▼（CSVを読み込んでDBを作るプログラムを実行）
+【データベース】 fe_study.db
+       │
+       ▼（DBからデータを引っ張ってきて画面に表示）
+【アプリ画面】 app.py（Streamlit）
 
-https://github.com/runrun920/de-ta-base
+# 基本情報技術者試験 学習支援システム
 
-【実行手順】
-1. ターミナルでダウンロード
-   git clone https://github.com/runrun920/de-ta-base.git
-   cd de-ta-base
+## このリポジトリの目的
+来住先生からの指示に基づき、以下の流れで動くシステムを作る。
 
-2. 必要なライブラリを入れる
-   pip3 install pandas openpyxl
+1. **`fe_study_master.csv`**（「例え話」「実用例」「科目A予想問題」「文系学生向け解説」「情報科学生向け解説」が入ったCSV）を用意する
+2. そのCSVから **データベース（`fe_study.db`）** を作る
+3. そのデータベースを読み込んで **`app.py`（Streamlitアプリ）** で画面に表示する
 
-3. プログラムを実行
-   python3 merge_to_master.py
+---
 
-無事に「fe_study_master.xlsx」と「fe_study_master.csv」が作られたか確認してみて！
+## 🚀 実行手順
+
+### 1. 準備（初回のみ）
+pip3 install pandas streamlit
