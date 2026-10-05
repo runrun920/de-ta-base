@@ -27,3 +27,5 @@ python3 build_db.py
 
 ### 3. アプリを起動
 streamlit run app.py
+streamlit run admin_app.py --server.port 8502
+（※adminは管理者用画面。学習者の学習状況を見られる画面）
