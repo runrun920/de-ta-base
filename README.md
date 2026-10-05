@@ -23,7 +23,7 @@ cd de-ta-base
 pip3 install pandas streamlit
 
 ### 3. データベースを作る
-python3 make_db.py
+python3 build_db.py
 
 ### 3. アプリを起動
 streamlit run app.py
