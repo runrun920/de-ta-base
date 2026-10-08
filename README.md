@@ -1,4 +1,4 @@
-1. 【データ元】 fe_study_master.csv（CSVを読み込んでDBを作るプログラムを実行）
+1. 【データ元】 fe_study_master_23sheets（CSVを読み込んでDBを作るプログラムを実行）
 2. 【データベース】 fe_study.db（DBからデータを引っ張ってきて画面に表示）
 3. 【アプリ画面】 app.py（Streamlit）
 
