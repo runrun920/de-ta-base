@@ -36,3 +36,62 @@
 [2026-09-29 16:01:12] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
 [2026-09-29 16:01:17] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
 [2026-09-29 16:01:17] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-10-06 08:21:08] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-06 08:21:13] [INFO]: VIEW_TERM: user_id=G23937, term=機密性
+[2026-10-06 08:21:16] [INFO]: VIEW_TERM: user_id=G23937, term=2の補数
+[2026-10-06 08:21:28] [INFO]: VIEW_TERM: user_id=G23937, term=2分探索木
+[2026-10-06 08:21:31] [INFO]: VIEW_TERM: user_id=G23937, term=2の補数
+[2026-10-06 08:21:37] [INFO]: VIEW_TERM: user_id=G23937, term=CCB
+[2026-10-06 08:21:40] [INFO]: VIEW_TERM: user_id=G23937, term=ASP
+[2026-10-06 08:35:43] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-06 08:36:07] [INFO]: USER_LOGIN: user_id=ABC, major=文系・初学者
+[2026-10-06 08:36:10] [INFO]: VIEW_TERM: user_id=ABC, term=機密性
+[2026-10-06 08:36:12] [INFO]: VIEW_TERM: user_id=ABC, term=2の補数
+[2026-10-06 08:36:20] [INFO]: VIEW_TERM: user_id=ABC, term=可用性
+[2026-10-06 08:37:21] [INFO]: VIEW_TERM: user_id=ABC, term=否認防止
+[2026-10-06 08:38:04] [INFO]: VIEW_TERM: user_id=ABC, term=否認防止
+[2026-10-06 08:38:08] [INFO]: VIEW_TERM: user_id=ABC, term=完全性
+[2026-10-06 08:38:37] [INFO]: VIEW_TERM: user_id=ABC, term=完全性
+[2026-10-06 08:38:39] [INFO]: VIEW_TERM: user_id=ABC, term=3-2-1ルール
+[2026-10-06 08:38:48] [INFO]: VIEW_TERM: user_id=ABC, term=3-2-1ルール
+[2026-10-06 08:38:51] [INFO]: VIEW_TERM: user_id=ABC, term=真正性
+[2026-10-06 08:39:45] [INFO]: USER_LOGIN: user_id=ABC, major=文系・初学者
+[2026-10-06 08:39:48] [INFO]: USER_DELETED: user_id=ABC
+[2026-10-06 14:49:53] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-06 15:32:36] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-06 15:32:39] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
+[2026-10-06 15:32:42] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=example
+[2026-10-06 15:32:44] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=official
+[2026-10-06 15:33:15] [INFO]: CONTENT_VIEW: user=G23937, term=可用性, type=metaphor
+[2026-10-06 15:33:16] [INFO]: CONTENT_VIEW: user=G23937, term=可用性, type=example
+[2026-10-06 15:33:17] [INFO]: CONTENT_VIEW: user=G23937, term=可用性, type=official
+[2026-10-06 15:33:29] [INFO]: USER_LOGIN: user_id=aaa, major=文系・初学者
+[2026-10-06 15:33:31] [INFO]: CONTENT_VIEW: user=aaa, term=可用性, type=metaphor
+[2026-10-06 15:33:34] [INFO]: CONTENT_VIEW: user=aaa, term=可用性, type=example
+[2026-10-06 15:33:43] [INFO]: CONTENT_VIEW: user=aaa, term=可用性, type=metaphor
+[2026-10-06 15:33:46] [INFO]: CONTENT_VIEW: user=aaa, term=可用性, type=example
+[2026-10-06 15:33:46] [INFO]: CONTENT_VIEW: user=aaa, term=可用性, type=official
+[2026-10-06 15:33:48] [INFO]: CONTENT_VIEW: user=aaa, term=完全性, type=metaphor
+[2026-10-06 15:33:52] [INFO]: CONTENT_VIEW: user=aaa, term=完全性, type=metaphor
+[2026-10-06 15:33:53] [INFO]: CONTENT_VIEW: user=aaa, term=完全性, type=example
+[2026-10-06 15:33:54] [INFO]: CONTENT_VIEW: user=aaa, term=完全性, type=official
+[2026-10-06 15:35:03] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-06 15:35:05] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
+[2026-10-06 15:35:17] [INFO]: CONTENT_VIEW: user=G23937, term=可用性, type=metaphor
+[2026-10-06 15:37:01] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-06 15:37:03] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
+[2026-10-06 15:37:05] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=metaphor
+[2026-10-06 15:37:07] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=example
+[2026-10-06 15:37:08] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=official
+[2026-10-06 15:37:30] [INFO]: CONTENT_VIEW: user=G23937, term=中間言語, type=metaphor
+[2026-10-06 15:37:31] [INFO]: CONTENT_VIEW: user=G23937, term=中間言語, type=official
+[2026-10-06 16:01:21] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-06 16:02:25] [INFO]: QUIZ_START: user_id=G23937, total=71
+[2026-10-06 16:02:27] [INFO]: QUIZ_ANSWER: user=G23937, term=個人情報保護法, ans=ア, correct=False
+[2026-10-06 16:02:34] [INFO]: QUIZ_ANSWER: user=G23937, term=デッドロック, ans=ア, correct=True
+[2026-10-06 16:07:06] [INFO]: QUIZ_ANSWER: user=G23937, term=HAVING, ans=ア, correct=False
+[2026-10-06 16:07:21] [INFO]: QUIZ_ANSWER: user=G23937, term=実効アクセス時間, ans=ウ, correct=False
+[2026-10-06 16:09:19] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
+[2026-10-06 16:09:20] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
+[2026-10-06 16:10:07] [INFO]: QUIZ_ANSWER: user=G23937, term=XSS, ans=ウ, correct=False
+[2026-10-06 16:10:38] [INFO]: QUIZ_ANSWER: user=G23937, term=不正アクセス禁止法, ans=ア, correct=False

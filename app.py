@@ -4,10 +4,8 @@ import random
 import os
 import logging
 
-# ページ設定
 st.set_page_config(page_title="FE-AI Tutor", page_icon="🎓", layout="wide")
 
-# 翻訳ツールの誤作動・クラッシュを完全に防ぐ設定
 st.markdown("""
 <meta name="google" content="notranslate">
 <style>
@@ -35,15 +33,11 @@ logger = setup_logger()
 def get_db():
     return sqlite3.connect(DB_FILE)
 
-# DBの存在確認
 if not os.path.exists(DB_FILE):
     st.error("⚠️ データベース（fe_study.db）が見つかりません。")
-    st.info("ターミナルで `python3 build_db.py` を実行して、先にデータベースを作成してください。")
+    st.info("ターミナルで `python3 sync_db.py` を実行してください。")
     st.stop()
 
-# ==========================================
-# 0. IPA公式シラバス階層マスター（全23中分類）
-# ==========================================
 SYLLABUS_STRUCTURE = {
     "テクノロジ系": [
         "1. 基礎理論", "2. アルゴリズムとプログラミング", "3. コンピュータ構成要素",
@@ -60,9 +54,7 @@ SYLLABUS_STRUCTURE = {
     ]
 }
 
-# ==========================================
-# 1. セッション状態の初期化
-# ==========================================
+# セッション状態の初期化
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_id = ""
@@ -83,9 +75,7 @@ if "quiz_user_answers" not in st.session_state:
 if "quiz_answered_current" not in st.session_state:
     st.session_state.quiz_answered_current = False
 
-# ==========================================
-# 2. ログイン画面
-# ==========================================
+# ログイン画面
 if not st.session_state.logged_in:
     st.markdown('<h1 translate="no">🎓 基本情報技術者試験 学習支援システム (FE-AI Tutor)</h1>', unsafe_allow_html=True)
     st.subheader("ログイン")
@@ -125,9 +115,7 @@ if not st.session_state.logged_in:
                 st.error("学籍番号とお名前を入力してください。")
     st.stop()
 
-# ==========================================
-# 3. サイドバー
-# ==========================================
+# サイドバー
 with st.sidebar:
     st.markdown(f'<div translate="no">👤 ログイン中: <b>{st.session_state.user_name}</b> さん<br><small>ID: {st.session_state.user_id} ｜ {st.session_state.major_type}</small></div>', unsafe_allow_html=True)
     st.markdown("---")
@@ -206,19 +194,36 @@ with st.sidebar:
                 st.info(f"「{s_sel}」の登録用語は現在0件です。")
 
         conn.close()
-
+    
     st.markdown("---")
-    if st.button("ログアウト"):
-        st.session_state.logged_in = False
-        st.session_state.app_mode = "ホーム"
-        st.session_state.quiz_active = False
-        st.rerun()
+    col_out, col_del = st.columns(2)
+    with col_out:
+        if st.button("ログアウト", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.app_mode = "ホーム"
+            st.session_state.quiz_active = False
+            st.rerun()
 
-# ==========================================
-# 4. メイン画面の分岐
-# ==========================================
+    with col_del:
+        with st.popover("退会・削除", use_container_width=True):
+            st.warning("アカウントとこれまでの学習履歴がすべて削除されます。")
+            if st.button("本当に削除する", type="primary", key="btn_self_delete"):
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("DELETE FROM users WHERE user_id = ?", (st.session_state.user_id,))
+                cur.execute("DELETE FROM quiz_logs WHERE user_id = ?", (st.session_state.user_id,))
+                cur.execute("DELETE FROM term_logs WHERE user_id = ?", (st.session_state.user_id,))
+                cur.execute("DELETE FROM content_view_logs WHERE user_id = ?", (st.session_state.user_id,))
+                conn.commit()
+                conn.close()
 
-# --- [A] ホーム画面 ---
+                logger.info(f"USER_DELETED: user_id={st.session_state.user_id}")
+                st.session_state.logged_in = False
+                st.session_state.app_mode = "ホーム"
+                st.session_state.quiz_active = False
+                st.rerun()
+
+# メイン画面の分岐
 if st.session_state.app_mode == "ホーム":
     st.markdown(f'<h1 translate="no">ようこそ、{st.session_state.user_name} さん！ 👋</h1>', unsafe_allow_html=True)
     st.write("基本情報技術者試験（科目A）の対策を始めましょう。学習目的を選択してください。")
@@ -236,31 +241,48 @@ if st.session_state.app_mode == "ホーム":
             st.session_state.app_mode = "問題を解く"
             st.rerun()
 
-# --- [B] 用語学習画面 ---
 elif st.session_state.app_mode == "用語を勉強する":
     curr = st.session_state.current_term
     conn = get_db()
     cur = conn.cursor()
 
-    master_data = None
-    try:
-        cur.execute("""
-        SELECT category, sub_category, intuitive_def, practical_example, official_def 
-        FROM terms_master WHERE term_name = ?
-        """, (curr,))
-        master_data = cur.fetchone()
-    except Exception:
-        pass
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS content_view_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        term_name TEXT,
+        content_type TEXT,
+        viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
 
-    normal_data = None
-    if not master_data:
-        try:
-            cur.execute("SELECT category, sub_category, official_def, url FROM terms WHERE term_name = ?", (curr,))
-            normal_data = cur.fetchone()
-        except Exception:
-            pass
+    # 用語基本情報（terms）の取得
+    cur.execute("SELECT id, category, sub_category, official_def, url FROM terms WHERE term_name = ?", (curr,))
+    term_row = cur.fetchone()
+    
+    term_id = term_row[0] if term_row else None
+    cat = term_row[1] if term_row else "テクノロジ系"
+    sub_cat = term_row[2] if term_row else "未分類"
+    off_def = term_row[3] if term_row else ""
+    url = term_row[4] if term_row else ""
 
-    # 閲覧ログの記録
+    # 比喩テーブル（term_metaphors）から取得
+    int_def = ""
+    if term_id:
+        cur.execute("SELECT metaphor_text FROM term_metaphors WHERE term_id = ? AND source_ai = 'Final'", (term_id,))
+        m_row = cur.fetchone()
+        if m_row:
+            int_def = m_row[0]
+
+    # 実用例テーブル（term_examples）から取得
+    prac_ex = ""
+    if term_id:
+        cur.execute("SELECT example_text FROM term_examples WHERE term_id = ? AND source_ai = 'Final'", (term_id,))
+        e_row = cur.fetchone()
+        if e_row:
+            prac_ex = e_row[0]
+
+    # 全体閲覧ログ (term_logs) の記録
     try:
         cur.execute("""
         CREATE TABLE IF NOT EXISTS term_logs (
@@ -271,44 +293,66 @@ elif st.session_state.app_mode == "用語を勉強する":
             viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        cat_log = master_data[0] if master_data else (normal_data[0] if normal_data else "未分類")
         cur.execute("INSERT INTO term_logs (user_id, term_name, category) VALUES (?, ?, ?)",
-                    (st.session_state.user_id, curr, cat_log))
+                    (st.session_state.user_id, curr, cat))
         conn.commit()
-        logger.info(f"VIEW_TERM: user_id={st.session_state.user_id}, term={curr}")
     except Exception:
         pass
+
+    # 画面描画
+    has_custom = bool(int_def or prac_ex)
+    badge = "（★特製コンテンツ完備）" if has_custom else ""
+    st.caption(f"📚 {cat} ＞ {sub_cat} {badge}")
+    st.markdown(f'<h1 translate="no">💻 {curr}</h1>', unsafe_allow_html=True)
+
+    # 全用語共通で3つの解説タイプを選択できるように統一
+    view_choice = st.radio(
+        "解説の種類を選択してください（閲覧ログが研究データとして記録されます）：",
+        ["💡 直感理解（例え話）", "🌍 身近な実用例", "📖 試験対策（公式定義）"],
+        horizontal=True,
+        key=f"view_choice_{curr}"
+    )
+
+    content_type_map = {
+        "💡 直感理解（例え話）": "metaphor",
+        "🌍 身近な実用例": "example",
+        "📖 試験対策（公式定義）": "official"
+    }
+    selected_type = content_type_map[view_choice]
+
+    try:
+        cur.execute("""
+        INSERT INTO content_view_logs (user_id, term_name, content_type)
+        VALUES (?, ?, ?)
+        """, (st.session_state.user_id, curr, selected_type))
+        conn.commit()
+        logger.info(f"CONTENT_VIEW: user={st.session_state.user_id}, term={curr}, type={selected_type}")
+    except Exception as e:
+        logger.error(f"LOG_ERROR: {e}")
+
+    # コンテンツの表示（データがない用語は丁寧な準備中案内を表示）
+    if view_choice == "💡 直感理解（例え話）":
+        if int_def and int_def.strip():
+            st.info(int_def)
+        else:
+            st.info("💡 **直感理解（例え話）**\n\n※この用語の直感的な比喩解説は現在準備中です。")
+
+    elif view_choice == "🌍 身近な実用例":
+        if prac_ex and prac_ex.strip():
+            st.success(prac_ex)
+        else:
+            st.success("🌍 **身近な実用例**\n\n※この用語の身近な実用例は現在準備中です。")
+
+    elif view_choice == "📖 試験対策（公式定義）":
+        if off_def and off_def.strip():
+            st.warning(off_def)
+        else:
+            st.warning("📖 **公式定義**\n\n※公式定義データ準備中")
+        if url and url.strip():
+            st.caption(f"[過去問道場で確認する]({url})")
+
     conn.close()
 
-    if master_data:
-        cat, sub, int_def, prac_ex, off_def = master_data
-        st.caption(f"📚 {cat} ＞ {sub} （★特製コンテンツ完備）")
-        st.markdown(f'<h1 translate="no">💻 {curr}</h1>', unsafe_allow_html=True)
-
-        tab1, tab2, tab3 = st.tabs(["💡 直感理解（例え話）", "🌍 身近な実用例", "📖 試験対策（公式定義）"])
-        with tab1:
-            st.info(int_def if int_def else "※解説準備中")
-        with tab2:
-            st.success(prac_ex if prac_ex else "※実用例準備中")
-        with tab3:
-            st.warning(off_def if off_def else "※公式定義準備中")
-
-    elif normal_data:
-        cat, sub, off_def, url = normal_data
-        st.caption(f"📚 {cat} ＞ {sub}")
-        st.markdown(f'<h1 translate="no">💻 {curr}</h1>', unsafe_allow_html=True)
-
-        tab1, tab2, tab3 = st.tabs(["📖 シラバス公式解説", "💡 直感理解（例え話）", "🌍 身近な実用例"])
-        with tab1:
-            st.write(off_def if off_def else "※公式定義準備中")
-            if url:
-                st.caption(f"[過去問道場で確認する]({url})")
-        with tab2:
-            st.info("※この用語の例え話は順次追加予定です。")
-        with tab3:
-            st.success("※この用語の実用例は順次追加予定です。")
-
-# --- [C] 問題演習画面 ---
 elif st.session_state.app_mode == "問題を解く":
     st.markdown('<h1 translate="no">📝 実戦問題演習モード（科目A試験対策）</h1>', unsafe_allow_html=True)
 
@@ -326,7 +370,7 @@ elif st.session_state.app_mode == "問題を解く":
         conn.close()
 
         if avail_q_count == 0:
-            st.warning("現在出題可能な問題がありません。先に `python3 build_db.py` を実行してください。")
+            st.warning("現在出題可能な問題がありません。先に `python3 sync_db.py` を実行してください。")
             st.stop()
 
         max_options = [cnt for cnt in [5, 10, 15, 30] if cnt < avail_q_count] + [avail_q_count]
@@ -397,7 +441,6 @@ elif st.session_state.app_mode == "問題を解く":
             st.caption(f"問題 {idx + 1} / {total} ｜ 対象用語：{q_term}")
             st.markdown(f'<h3 translate="no">Q{idx + 1}. {q_text}</h3>', unsafe_allow_html=True)
 
-            # 記号表記を「ア: 」「イ: 」に固定
             choices = [f"ア: {c_a}", f"イ: {c_b}", f"ウ: {c_c}", f"エ: {c_d}"]
             user_choice = st.radio("選択肢：", choices, key=f"q_radio_{idx}", disabled=st.session_state.quiz_answered_current)
             selected_char = user_choice[0]
