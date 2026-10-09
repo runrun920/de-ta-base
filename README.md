@@ -18,24 +18,30 @@
 ## 実行手順
 
 ### 1. 準備：リポジトリのクローン（初回のみ）
-git clone [https://github.com/runrun920/de-ta-base.git](https://github.com/runrun920/de-ta-base.git)
-cd de-ta-base
+**git clone [https://github.com/runrun920/de-ta-base.git](https://github.com/runrun920/de-ta-base.git)
+cd de-ta-base**
 
 ### 2. 必要なものを入れる
-pip3 install pandas streamlit
-pip3 install pandas streamlit openpyxl google-genai
+**pip3 install pandas streamlit**
+
+**pip3 install pandas streamlit openpyxl google-genai**
+
 
 ### 3. データ生成・メンテナンス用スクリプト（管理者向け）
 fe_study_master_23sheets.xlsx を読み込み、Google Gemini API を用いて未作成の用語に対する
 「直感的例え話」「身近な実用例」「科目A予想問題」「初級者向け解説」「上級者向け解説」を自動生成し、Excelに保存
 
-python3 generate_and_save_to_excel.py
+**python3 generate_and_save_to_excel.py**
+
 
 ### 4. データベースを作る
 Excelファイル（fe_study_master_23sheets.xlsx）の内容をSQLiteデータベース（fe_study.db）に反映する
-python3 sync_db.py
+
+**python3 sync_db.py**
+
 
 ### 5. アプリを起動
-1. streamlit run app.py
-2. streamlit run admin_app.py --server.port 8502
+1. **streamlit run app.py**
+  
+2. **streamlit run admin_app.py --server.port 8502**
 （※adminは管理者用画面。学習者の学習状況を見られる画面）
