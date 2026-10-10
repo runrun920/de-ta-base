@@ -39,8 +39,20 @@ Excelファイル（fe_study_master_23sheets.xlsx）の内容をSQLiteデータ�
 
 **python3 sync_db.py**
 
+### 5. GitHubに保存する
 
-### 5. アプリを起動
+# 1. 更新された Excel と DB をステージング
+git add fe_study_master_23sheets.xlsx fe_study.db README.md
+
+# 2. 進捗状況を記録してコミット
+git commit -m "〇〇 / 3376 用語中 登録完了"
+
+# 3. 安全に取り込んでプッシュ
+git pull --rebase origin main
+git push origin main
+
+
+### 6. アプリを起動
 1. **streamlit run app.py**
   
 2. **streamlit run admin_app.py --server.port 8502**
