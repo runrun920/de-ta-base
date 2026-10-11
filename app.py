@@ -3,6 +3,8 @@ import sqlite3
 import random
 import os
 import logging
+import re
+import pandas as pd
 
 st.set_page_config(page_title="FE-AI Tutor", page_icon="🎓", layout="wide")
 
@@ -38,6 +40,7 @@ if not os.path.exists(DB_FILE):
     st.info("ターミナルで `python3 sync_db.py` を実行してください。")
     st.stop()
 
+# シラバス構造定義
 SYLLABUS_STRUCTURE = {
     "テクノロジ系": [
         "1. 基礎理論", "2. アルゴリズムとプログラミング", "3. コンピュータ構成要素",
@@ -53,6 +56,76 @@ SYLLABUS_STRUCTURE = {
         "20. 技術戦略マネジメント", "21. ビジネスインダストリ", "22. 企業活動", "23. 法務"
     ]
 }
+
+# 過去問道場の出題比率（全2,035問）をベースに、全2,841問規模へ換算した重み付け定義
+PAST_EXAM_WEIGHTS = {
+    # テクノロジ系 (計 1,852問)
+    "基礎理論": 240,
+    "アルゴリズムとプログラミング": 190,
+    "コンピュータ構成要素": 200,
+    "システム構成要素": 168,
+    "ソフトウェア": 182,
+    "ハードウェア": 63,
+    "ユーザーインタフェース": 29,
+    "情報メディア": 42,
+    "データベース": 212,
+    "ネットワーク": 197,
+    "セキュリティ": 288,
+    "システム開発技術": 179,
+    "ソフトウェア開発管理技術": 57,
+    # マネジメント系 (計 309問)
+    "プロジェクトマネジメント": 120,
+    "サービスマネジメント": 108,
+    "システム監査": 81,
+    # ストラテジ系 (計 680問)
+    "システム戦略": 101,
+    "システム企画": 53,
+    "経営戦略マネジメント": 108,
+    "技術戦略マネジメント": 14,
+    "ビジネスインダストリ": 101,
+    "企業活動": 207,
+    "法務": 101
+}
+
+def clean_subcat_name(name):
+    """'11. セキュリティ' -> 'セキュリティ' に整形"""
+    if not name:
+        return ""
+    return re.sub(r'^\d+\.\s*', '', str(name)).strip()
+
+def shuffle_question_choices(q_tuple):
+    """
+    出題時に選択肢ア〜エをランダムにシャッフルし、正解記号（ア・イ・ウ・エ）を再計算して均等化する
+    q_tuple: (id, term_name, question_text, choice_a, choice_b, choice_c, choice_d, 
+              correct_ans, exp_beg, exp_adv, cat, sub_cat)
+    """
+    (q_id, term_name, q_text, c_a, c_b, c_c, c_d, c_ans, exp_beg, exp_adv, cat, sub_cat) = q_tuple
+    
+    orig_choices = {
+        "ア": str(c_a).strip(),
+        "イ": str(c_b).strip(),
+        "ウ": str(c_c).strip(),
+        "エ": str(c_d).strip()
+    }
+    target_correct_text = orig_choices.get(str(c_ans).strip(), str(c_a).strip())
+    
+    choice_texts = [str(c_a).strip(), str(c_b).strip(), str(c_c).strip(), str(c_d).strip()]
+    random.shuffle(choice_texts)
+    
+    labels = ["ア", "イ", "ウ", "エ"]
+    new_choices = {}
+    new_correct_ans = "ア"
+    
+    for lbl, text in zip(labels, choice_texts):
+        new_choices[lbl] = text
+        if text == target_correct_text:
+            new_correct_ans = lbl
+            
+    return (
+        q_id, term_name, q_text,
+        new_choices["ア"], new_choices["イ"], new_choices["ウ"], new_choices["エ"],
+        new_correct_ans, exp_beg, exp_adv, cat, sub_cat
+    )
 
 # セッション状態の初期化
 if "logged_in" not in st.session_state:
@@ -236,7 +309,7 @@ if st.session_state.app_mode == "ホーム":
             st.rerun()
             
     with col2:
-        st.success("### 📝 問題を解く\nデータベースに収録された予想問題に挑戦。文系・情報科学科それぞれの属性に最適化された解説付き。")
+        st.success("### 📝 問題を解く\nデータベースに収録された全問題に挑戦。分野別特訓または科目A本番頻度に基づいた全分野演習が可能です。")
         if st.button("問題演習へ進む ➔", key="btn_go_quiz", type="primary"):
             st.session_state.app_mode = "問題を解く"
             st.rerun()
@@ -256,7 +329,6 @@ elif st.session_state.app_mode == "用語を勉強する":
     )
     """)
 
-    # 用語基本情報（terms）の取得
     cur.execute("SELECT id, category, sub_category, official_def, url FROM terms WHERE term_name = ?", (curr,))
     term_row = cur.fetchone()
     
@@ -266,7 +338,6 @@ elif st.session_state.app_mode == "用語を勉強する":
     off_def = term_row[3] if term_row else ""
     url = term_row[4] if term_row else ""
 
-    # 比喩テーブル（term_metaphors）から取得
     int_def = ""
     if term_id:
         cur.execute("SELECT metaphor_text FROM term_metaphors WHERE term_id = ? AND source_ai = 'Final'", (term_id,))
@@ -274,7 +345,6 @@ elif st.session_state.app_mode == "用語を勉強する":
         if m_row:
             int_def = m_row[0]
 
-    # 実用例テーブル（term_examples）から取得
     prac_ex = ""
     if term_id:
         cur.execute("SELECT example_text FROM term_examples WHERE term_id = ? AND source_ai = 'Final'", (term_id,))
@@ -282,7 +352,6 @@ elif st.session_state.app_mode == "用語を勉強する":
         if e_row:
             prac_ex = e_row[0]
 
-    # 全体閲覧ログ (term_logs) の記録
     try:
         cur.execute("""
         CREATE TABLE IF NOT EXISTS term_logs (
@@ -299,13 +368,11 @@ elif st.session_state.app_mode == "用語を勉強する":
     except Exception:
         pass
 
-    # 画面描画
     has_custom = bool(int_def or prac_ex)
     badge = "（★特製コンテンツ完備）" if has_custom else ""
     st.caption(f"📚 {cat} ＞ {sub_cat} {badge}")
     st.markdown(f'<h1 translate="no">💻 {curr}</h1>', unsafe_allow_html=True)
 
-    # 全用語共通で3つの解説タイプを選択できるように統一
     view_choice = st.radio(
         "解説の種類を選択してください（閲覧ログが研究データとして記録されます）：",
         ["💡 直感理解（例え話）", "🌍 身近な実用例", "📖 試験対策（公式定義）"],
@@ -330,7 +397,6 @@ elif st.session_state.app_mode == "用語を勉強する":
     except Exception as e:
         logger.error(f"LOG_ERROR: {e}")
 
-    # コンテンツの表示（データがない用語は丁寧な準備中案内を表示）
     if view_choice == "💡 直感理解（例え話）":
         if int_def and int_def.strip():
             st.info(int_def)
@@ -358,43 +424,127 @@ elif st.session_state.app_mode == "問題を解く":
 
     if not st.session_state.quiz_active:
         st.subheader("演習設定")
-        st.caption("データベース（`terms_master`）に収録された問題から出題されます。")
 
         conn = get_db()
         cur = conn.cursor()
-        try:
+
+        quiz_mode = st.radio(
+            "出題モードを選択してください：",
+            ["🎲 全分野（科目Aの出題率準拠）", "📂 23分野別特訓（中分類指定）"],
+            horizontal=True
+        )
+
+        target_subcat = None
+        if quiz_mode == "📂 23分野別特訓（中分類指定）":
+            col_c, col_s = st.columns(2)
+            with col_c:
+                c_sel_q = st.selectbox("大分類を選択：", list(SYLLABUS_STRUCTURE.keys()))
+            with col_s:
+                s_sel_q = st.selectbox("中分類を選択：", SYLLABUS_STRUCTURE[c_sel_q])
+            target_subcat = s_sel_q
+            
+            cur.execute("""
+            SELECT COUNT(*) FROM terms_master 
+            WHERE question_text IS NOT NULL AND question_text != '' AND sub_category = ?
+            """, (target_subcat,))
+            avail_q_count = cur.fetchone()[0]
+            st.caption(f"「{target_subcat}」の出題可能問題数： **{avail_q_count}** 問")
+        else:
             cur.execute("SELECT COUNT(*) FROM terms_master WHERE question_text IS NOT NULL AND question_text != ''")
             avail_q_count = cur.fetchone()[0]
-        except Exception:
-            avail_q_count = 0
+            st.caption(f"全分野合計の出題可能問題数： **{avail_q_count}** 問")
+            st.info("💡 **本番出題比率ロジック有効中**：テクノロジ系 約68%、ストラテジ系 約20%、マネジメント系 約12%の比率を維持し、過去問出題頻度の高い中分類（セキュリティ、基礎理論、企業活動など）から優先的に重み付け出題します。[cite: 1, 2, 4]")
+
         conn.close()
 
         if avail_q_count == 0:
-            st.warning("現在出題可能な問題がありません。先に `python3 sync_db.py` を実行してください。")
+            st.warning("この条件で出題可能な問題がありません。別の分野を選択するか、`python3 sync_db.py` を実行してください。")
             st.stop()
 
-        max_options = [cnt for cnt in [5, 10, 15, 30] if cnt < avail_q_count] + [avail_q_count]
-        num_choice = st.radio("出題数：", max_options, format_func=lambda x: f"{x}問 （登録全問演習）" if x == avail_q_count else f"{x}問", horizontal=True)
+        max_options = [cnt for cnt in [5, 10, 20, 60] if cnt < avail_q_count] + [avail_q_count]
+        num_choice = st.radio("出題数：", max_options, format_func=lambda x: f"{x}問 （全問演習）" if x == avail_q_count else f"{x}問", horizontal=True)
 
         if st.button("🚀 演習を開始する", type="primary"):
             conn = get_db()
-            cur = conn.cursor()
-            cur.execute("""
-            SELECT id, term_name, question_text, choice_a, choice_b, choice_c, choice_d, 
-                   correct_ans, explanation_beginner, explanation_advanced 
-            FROM terms_master 
-            WHERE question_text IS NOT NULL AND question_text != ''
-            """)
-            q_rows = cur.fetchall()
+            
+            if quiz_mode == "📂 23分野別特訓（中分類指定）":
+                cur = conn.cursor()
+                cur.execute("""
+                SELECT id, term_name, question_text, choice_a, choice_b, choice_c, choice_d, 
+                       correct_ans, explanation_beginner, explanation_advanced, category, sub_category 
+                FROM terms_master 
+                WHERE question_text IS NOT NULL AND question_text != '' AND sub_category = ?
+                """, (target_subcat,))
+                q_rows = cur.fetchall()
+                random.shuffle(q_rows)
+                raw_selected = q_rows[:num_choice]
+            else:
+                # 全分野ごちゃ混ぜ：大分類比率 ＆ 中分類ウェイトに基づく厳密なサンプリング
+                df_all = pd.read_sql_query("""
+                SELECT id, term_name, question_text, choice_a, choice_b, choice_c, choice_d, 
+                       correct_ans, explanation_beginner, explanation_advanced, category, sub_category 
+                FROM terms_master 
+                WHERE question_text IS NOT NULL AND question_text != ''
+                """, conn)
+
+                # 重複排除のためIDを一意キーとして設定
+                df_all = df_all.drop_duplicates(subset=["id"]).set_index("id", drop=False)
+
+                def get_row_weight(row):
+                    clean_name = clean_subcat_name(row["sub_category"])
+                    return PAST_EXAM_WEIGHTS.get(clean_name, 30)
+
+                df_all["weight"] = df_all.apply(get_row_weight, axis=1)
+
+                # 科目A出題比率（テクノロジ約68% : マネジメント約12% : ストラテジ約20%）に基づく問題数算出
+                n_tech = int(round(num_choice * 0.68))
+                n_mgmt = int(round(num_choice * 0.12))
+                n_strat = num_choice - (n_tech + n_mgmt)
+
+                df_tech = df_all[df_all["category"] == "テクノロジ系"]
+                df_mgmt = df_all[df_all["category"] == "マネジメント系"]
+                df_strat = df_all[df_all["category"] == "ストラテジ系"]
+
+                selected_indices = set()
+                sampled_dfs = []
+
+                for sub_df, needed in [(df_tech, n_tech), (df_mgmt, n_mgmt), (df_strat, n_strat)]:
+                    if needed <= 0 or len(sub_df) == 0:
+                        continue
+                    actual_n = min(needed, len(sub_df))
+                    # 重み付け抽出（非復元抽出）
+                    s = sub_df.sample(n=actual_n, weights="weight", replace=False)
+                    selected_indices.update(s.index.tolist())
+                    sampled_dfs.append(s)
+
+                df_selected = pd.concat(sampled_dfs) if sampled_dfs else pd.DataFrame()
+
+                # 端数調整（まだ選ばれていないID群から厳密に非重複で補充）
+                if len(df_selected) < num_choice:
+                    diff = num_choice - len(df_selected)
+                    remaining_pool = df_all[~df_all.index.isin(selected_indices)]
+                    if len(remaining_pool) > 0:
+                        extra = remaining_pool.sample(n=min(diff, len(remaining_pool)), weights="weight", replace=False)
+                        df_selected = pd.concat([df_selected, extra])
+
+                df_selected = df_selected.sample(frac=1).reset_index(drop=True)
+                raw_selected = [tuple(x) for x in df_selected[[
+                    "id", "term_name", "question_text", "choice_a", "choice_b", 
+                    "choice_c", "choice_d", "correct_ans", "explanation_beginner", 
+                    "explanation_advanced", "category", "sub_category"
+                ]].values]
+
             conn.close()
 
-            random.shuffle(q_rows)
-            st.session_state.quiz_questions = q_rows[:num_choice]
+            # 全問の選択肢ア〜エをランダムにシャッフルし、正解記号（ア・イ・ウ・エ）を均等分散
+            shuffled_selected = [shuffle_question_choices(q) for q in raw_selected]
+
+            st.session_state.quiz_questions = shuffled_selected
             st.session_state.quiz_index = 0
             st.session_state.quiz_user_answers = {}
             st.session_state.quiz_answered_current = False
             st.session_state.quiz_active = True
-            logger.info(f"QUIZ_START: user_id={st.session_state.user_id}, total={num_choice}")
+            logger.info(f"QUIZ_START: user_id={st.session_state.user_id}, mode={quiz_mode}, total={len(shuffled_selected)}")
             st.rerun()
 
     else:
@@ -405,21 +555,21 @@ elif st.session_state.app_mode == "問題を解く":
         if idx >= total:
             st.success("🎉 全問解答完了！")
             correct_count = sum(1 for a in st.session_state.quiz_user_answers.values() if a["is_correct"])
-            rate = (correct_count / total) * 100
+            rate = (correct_count / total) * 100 if total > 0 else 0
             st.metric("正答率", f"{rate:.1f}%", f"{correct_count} / {total} 問正解")
 
             if rate >= 60.0:
                 st.balloons()
-                st.success("🏆 合格基準点（60%）達成！")
+                st.success("🏆 合格基準点（60%）達成！本番でもこの調子で臨みましょう。")
             else:
-                st.info("💡 基準点は60%です。解説を復習して再挑戦しましょう。")
+                st.info("💡 合格基準点は60%です。間違えた問題の解説をよく読んで復習しましょう。")
 
             st.markdown("---")
             st.subheader("📋 解答一覧と詳細解説")
             for i, q in enumerate(q_list):
-                q_id, q_term, q_text, c_a, c_b, c_c, c_d, c_ans, exp_beg, exp_adv = q
+                q_id, q_term, q_text, c_a, c_b, c_c, c_d, c_ans, exp_beg, exp_adv, cat, sub_cat = q
                 ans_data = st.session_state.quiz_user_answers.get(i, {})
-                with st.expander(f"問 {i+1}：{q_term} — {'✅ 正解' if ans_data.get('is_correct') else '❌ 不正解'}"):
+                with st.expander(f"問 {i+1}：{q_term}（{sub_cat}） — {'✅ 正解' if ans_data.get('is_correct') else '❌ 不正解'}"):
                     st.write(f"**問題：** {q_text}")
                     st.write(f"**あなたの回答：** {ans_data.get('selected')} ｜ **正解：** {c_ans}")
                     
@@ -435,10 +585,11 @@ elif st.session_state.app_mode == "問題を解く":
 
         else:
             q = q_list[idx]
-            q_id, q_term, q_text, c_a, c_b, c_c, c_d, c_ans, exp_beg, exp_adv = q
+            q_id, q_term, q_text, c_a, c_b, c_c, c_d, c_ans, exp_beg, exp_adv, cat, sub_cat = q
 
             st.progress((idx + 1) / total)
-            st.caption(f"問題 {idx + 1} / {total} ｜ 対象用語：{q_term}")
+            # ネタバレ防止：回答前は対象用語名を完全に非表示とし、出題分野（中分類）のみ表示
+            st.caption(f"問題 {idx + 1} / {total} ｜ 出題分野：{sub_cat}")
             st.markdown(f'<h3 translate="no">Q{idx + 1}. {q_text}</h3>', unsafe_allow_html=True)
 
             choices = [f"ア: {c_a}", f"イ: {c_b}", f"ウ: {c_c}", f"エ: {c_d}"]
@@ -487,6 +638,9 @@ elif st.session_state.app_mode == "問題を解く":
                     st.success(f"🎉 正解です！（正解：{c_ans}）")
                 else:
                     st.error(f"❌ 不正解です... あなたの回答：{ans_data['selected']}（正解：{c_ans}）")
+
+                # 回答送信後に初めて対象用語を明示
+                st.info(f"💡 出題対象用語: **{q_term}** （{cat} ＞ {sub_cat}）")
 
                 st.markdown("---")
                 st.subheader("💡 学習者属性別 詳細解説")
