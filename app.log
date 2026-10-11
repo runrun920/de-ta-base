@@ -95,3 +95,17 @@
 [2026-10-06 16:09:20] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
 [2026-10-06 16:10:07] [INFO]: QUIZ_ANSWER: user=G23937, term=XSS, ans=ウ, correct=False
 [2026-10-06 16:10:38] [INFO]: QUIZ_ANSWER: user=G23937, term=不正アクセス禁止法, ans=ア, correct=False
+[2026-10-10 21:57:55] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-10 21:58:05] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
+[2026-10-10 21:58:06] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=metaphor
+[2026-10-10 21:58:12] [INFO]: CONTENT_VIEW: user=G23937, term=ITIL, type=metaphor
+[2026-10-10 21:58:14] [INFO]: CONTENT_VIEW: user=G23937, term=CTO, type=metaphor
+[2026-10-10 21:58:17] [INFO]: CONTENT_VIEW: user=G23937, term=SWOT分析, type=metaphor
+[2026-10-10 21:58:20] [INFO]: CONTENT_VIEW: user=G23937, term=DX, type=metaphor
+[2026-10-10 21:58:22] [INFO]: CONTENT_VIEW: user=G23937, term=ITIL, type=metaphor
+[2026-10-10 21:58:23] [INFO]: CONTENT_VIEW: user=G23937, term=ITIL, type=example
+[2026-10-10 21:58:29] [INFO]: CONTENT_VIEW: user=G23937, term=ITIL, type=metaphor
+[2026-10-10 21:59:15] [INFO]: QUIZ_START: user_id=G23937, total=5
+[2026-10-10 21:59:28] [INFO]: QUIZ_ANSWER: user=G23937, term=オーバーレイ方式, ans=ア, correct=True
+[2026-10-10 21:59:53] [INFO]: QUIZ_ANSWER: user=G23937, term=トランジスタ, ans=ア, correct=True
+[2026-10-10 22:00:04] [INFO]: QUIZ_ANSWER: user=G23937, term=第三者中継, ans=ウ, correct=True
