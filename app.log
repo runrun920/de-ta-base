@@ -221,3 +221,22 @@
 [2026-10-11 18:03:35] [INFO]: QUIZ_ANSWER: user=G23937, term=SYN同期, ans=エ, correct=True
 [2026-10-11 18:03:46] [INFO]: QUIZ_ANSWER: user=G23937, term=平均サービス率, ans=エ, correct=True
 [2026-10-11 18:03:52] [INFO]: QUIZ_ANSWER: user=G23937, term=ファインチューニング, ans=エ, correct=False
+[2026-10-11 23:08:18] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
+[2026-10-11 23:08:22] [INFO]: CONTENT_VIEW: user=G23937, term=機密性, type=metaphor
+[2026-10-11 23:08:24] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=metaphor
+[2026-10-11 23:08:26] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=example
+[2026-10-11 23:08:31] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=official
+[2026-10-11 23:08:38] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=example
+[2026-10-11 23:08:41] [INFO]: CONTENT_VIEW: user=G23937, term=2の補数, type=metaphor
+[2026-10-11 23:09:05] [INFO]: CONTENT_VIEW: user=G23937, term=排他的論理和, type=metaphor
+[2026-10-11 23:09:07] [INFO]: CONTENT_VIEW: user=G23937, term=排他的論理和, type=example
+[2026-10-11 23:09:41] [INFO]: QUIZ_START: user_id=G23937, mode=📂 23分野別特訓（中分類指定）, total=60
+[2026-10-11 23:09:48] [INFO]: QUIZ_ANSWER: user=G23937, term=BCP, ans=イ, correct=False
+[2026-10-11 23:10:01] [INFO]: QUIZ_ANSWER: user=G23937, term=クリティカルパス, ans=エ, correct=False
+[2026-10-11 23:10:10] [INFO]: QUIZ_ANSWER: user=G23937, term=パターン発見, ans=ウ, correct=True
+[2026-10-11 23:10:19] [INFO]: QUIZ_START: user_id=G23937, mode=📂 23分野別特訓（中分類指定）, total=5
+[2026-10-11 23:11:09] [INFO]: QUIZ_ANSWER: user=G23937, term=行列, ans=エ, correct=False
+[2026-10-11 23:11:37] [INFO]: QUIZ_ANSWER: user=G23937, term=桁落ち, ans=ア, correct=False
+[2026-10-11 23:11:46] [INFO]: CONTENT_VIEW: user=G23937, term=排他的論理和, type=metaphor
+[2026-10-11 23:11:48] [INFO]: CONTENT_VIEW: user=G23937, term=排他的論理和, type=metaphor
+[2026-10-11 23:20:31] [INFO]: USER_LOGIN: user_id=G23937, major=情報科学科・理系
