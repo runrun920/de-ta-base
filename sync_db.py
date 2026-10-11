@@ -231,12 +231,16 @@ def sync_database():
     conn.commit()
     conn.close()
 
-    print("-" * 50)
+    print("-" * 60)
     print(f"✅ 同期完了！")
     print(f"   - 新規用語追加: {added_terms} 件 / 更新: {updated_terms} 件")
     print(f"   - 新規問題追加: {added_questions} 件")
     print(f"   - 解答ログ (quiz_logs) や 閲覧ログ (term_logs) は一切壊れていません。")
-    print("-" * 50)
+    print("-" * 60)
+    print("\n🚀 【GitHub更新コマンド】次の3行をターミナルで実行してください:")
+    print("git add -A")
+    print('git commit -m "DB同期と最新データの反映"')
+    print("git pull --rebase origin main && git push origin main\n")
 
 if __name__ == "__main__":
     sync_database()
