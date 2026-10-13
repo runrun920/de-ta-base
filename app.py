@@ -70,7 +70,7 @@ if not os.path.exists(DB_FILE):
 def init_extended_tables():
     with get_db() as conn:
         cur = conn.cursor()
-        # ユーザーテーブルの作成（存在しない場合）
+        # ユーザーテーブル
         cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
@@ -79,13 +79,13 @@ def init_extended_tables():
         )
         """)
         
-        # ★ここを追加：既存テーブルに major_type カラムがない場合は自動で追加する
+        # major_type カラムの追加確認
         cur.execute("PRAGMA table_info(users)")
         columns = [col[1] for col in cur.fetchall()]
         if "major_type" not in columns:
             cur.execute("ALTER TABLE users ADD COLUMN major_type TEXT DEFAULT '文系・初学者'")
 
-        # ★ここを追加：quiz_logs に response_time_seconds がない場合も安全に追加
+        # quiz_logs テーブル
         cur.execute("""
         CREATE TABLE IF NOT EXISTS quiz_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,6 +134,8 @@ def init_extended_tables():
         )
         """)
         conn.commit()
+
+init_extended_tables()
 
 # ---------------------------------------------------------
 # ドメイン定数定義（シラバス構造 & 過去問道場2,841問換算比率）
@@ -469,13 +471,13 @@ elif st.session_state.app_mode == "問題を解く":
                 target_subcat = s_sel_q
                 
                 cur.execute("""
-                SELECT COUNT(*) FROM terms_master 
+                SELECT COUNT(DISTINCT id) FROM terms_master 
                 WHERE question_text IS NOT NULL AND question_text != '' AND sub_category = ?
                 """, (target_subcat,))
                 avail_q_count = cur.fetchone()[0]
                 st.caption(f"「{target_subcat}」の出題可能数： **{avail_q_count}** 問")
             else:
-                cur.execute("SELECT COUNT(*) FROM terms_master WHERE question_text IS NOT NULL AND question_text != ''")
+                cur.execute("SELECT COUNT(DISTINCT id) FROM terms_master WHERE question_text IS NOT NULL AND question_text != ''")
                 avail_q_count = cur.fetchone()[0]
                 st.caption(f"全分野合計の出題可能数： **{avail_q_count}** 問")
                 st.info("💡 **本番頻度配分モデル適用中**: テクノロジ約68%・マネジメント約12%・ストラテジ約20%の比率を保ち、出題実績の多い重要中分類から重み付けサンプリングします。[cite: 1, 2, 4]")
@@ -496,10 +498,12 @@ elif st.session_state.app_mode == "問題を解く":
                            correct_ans, explanation_beginner, explanation_advanced, category, sub_category 
                     FROM terms_master 
                     WHERE question_text IS NOT NULL AND question_text != '' AND sub_category = ?
+                    GROUP BY id
                     """, (target_subcat,))
                     raw_rows = cur.fetchall()
                     random.shuffle(raw_rows)
                     raw_selected = raw_rows[:num_choice]
+
                 else:
                     df_all = pd.read_sql_query("""
                     SELECT id, term_name, question_text, choice_a, choice_b, choice_c, choice_d, 
@@ -508,35 +512,53 @@ elif st.session_state.app_mode == "問題を解く":
                     WHERE question_text IS NOT NULL AND question_text != ''
                     """, conn)
 
+                    # 重複IDの排除
                     df_all = df_all.drop_duplicates(subset=["id"]).set_index("id", drop=False)
                     df_all["weight"] = df_all.apply(lambda r: PAST_EXAM_WEIGHTS.get(clean_subcat_name(r["sub_category"]), 30), axis=1)
 
-                    n_tech = int(round(num_choice * 0.68))
-                    n_mgmt = int(round(num_choice * 0.12))
-                    n_strat = num_choice - (n_tech + n_mgmt)
+                    # 全問演習（全件取得）が選ばれた場合はサンプリングを行わずに全件シャッフル
+                    if num_choice >= len(df_all):
+                        df_selected = df_all.sample(frac=1).reset_index(drop=True)
+                    else:
+                        n_tech = int(round(num_choice * 0.68))
+                        n_mgmt = int(round(num_choice * 0.12))
+                        n_strat = num_choice - (n_tech + n_mgmt)
 
-                    sampled_dfs = []
-                    selected_indices = set()
-                    for sub_df, needed in [
-                        (df_all[df_all["category"] == "テクノロジ系"], n_tech),
-                        (df_all[df_all["category"] == "マネジメント系"], n_mgmt),
-                        (df_all[df_all["category"] == "ストラテジ系"], n_strat)
-                    ]:
-                        if needed <= 0 or len(sub_df) == 0:
-                            continue
-                        s = sub_df.sample(n=min(needed, len(sub_df)), weights="weight", replace=False)
-                        selected_indices.update(s.index.tolist())
-                        sampled_dfs.append(s)
+                        sampled_dfs = []
+                        selected_indices = set()
+                        for sub_df, needed in [
+                            (df_all[df_all["category"] == "テクノロジ系"], n_tech),
+                            (df_all[df_all["category"] == "マネジメント系"], n_mgmt),
+                            (df_all[df_all["category"] == "ストラテジ系"], n_strat)
+                        ]:
+                            if needed <= 0 or len(sub_df) == 0:
+                                continue
+                            
+                            # 抽出必要数が母集団以上の場合は全件取得
+                            if needed >= len(sub_df):
+                                s = sub_df.copy()
+                            else:
+                                s = sub_df.sample(n=needed, weights="weight", replace=False)
+                            
+                            selected_indices.update(s.index.tolist())
+                            sampled_dfs.append(s)
 
-                    df_selected = pd.concat(sampled_dfs) if sampled_dfs else pd.DataFrame()
-                    if len(df_selected) < num_choice:
-                        diff = num_choice - len(df_selected)
-                        rem = df_all[~df_all.index.isin(selected_indices)]
-                        if len(rem) > 0:
-                            extra = rem.sample(n=min(diff, len(rem)), weights="weight", replace=False)
-                            df_selected = pd.concat([df_selected, extra])
+                        df_selected = pd.concat(sampled_dfs) if sampled_dfs else pd.DataFrame()
+                        
+                        # 端数調整
+                        if len(df_selected) < num_choice:
+                            diff = num_choice - len(df_selected)
+                            rem = df_all[~df_all.index.isin(selected_indices)]
+                            if len(rem) > 0:
+                                actual_add = min(diff, len(rem))
+                                if actual_add >= len(rem):
+                                    extra = rem.copy()
+                                else:
+                                    extra = rem.sample(n=actual_add, weights="weight", replace=False)
+                                df_selected = pd.concat([df_selected, extra])
 
-                    df_selected = df_selected.sample(frac=1).reset_index(drop=True)
+                        df_selected = df_selected.sample(frac=1).reset_index(drop=True)
+
                     raw_selected = [tuple(x) for x in df_selected[[
                         "id", "term_name", "question_text", "choice_a", "choice_b", 
                         "choice_c", "choice_d", "correct_ans", "explanation_beginner", 
