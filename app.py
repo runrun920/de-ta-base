@@ -70,7 +70,6 @@ if not os.path.exists(DB_FILE):
 def init_extended_tables():
     with get_db() as conn:
         cur = conn.cursor()
-        # ユーザーテーブル
         cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id TEXT PRIMARY KEY,
@@ -79,13 +78,11 @@ def init_extended_tables():
         )
         """)
         
-        # major_type カラムの追加確認
         cur.execute("PRAGMA table_info(users)")
         columns = [col[1] for col in cur.fetchall()]
         if "major_type" not in columns:
             cur.execute("ALTER TABLE users ADD COLUMN major_type TEXT DEFAULT '文系・初学者'")
 
-        # quiz_logs テーブル
         cur.execute("""
         CREATE TABLE IF NOT EXISTS quiz_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +99,6 @@ def init_extended_tables():
         if "response_time_seconds" not in q_columns:
             cur.execute("ALTER TABLE quiz_logs ADD COLUMN response_time_seconds REAL DEFAULT 0.0")
 
-        # 弱点・要復習ブックマークテーブル
         cur.execute("""
         CREATE TABLE IF NOT EXISTS quiz_bookmarks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,7 +109,6 @@ def init_extended_tables():
             UNIQUE(user_id, question_id)
         )
         """)
-        # コンテンツ詳細閲覧ログ
         cur.execute("""
         CREATE TABLE IF NOT EXISTS content_view_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,7 +118,6 @@ def init_extended_tables():
             viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        # 用語全体閲覧ログ
         cur.execute("""
         CREATE TABLE IF NOT EXISTS term_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,32 +166,60 @@ def clean_subcat_name(name: str) -> str:
         return ""
     return re.sub(r'^\d+\.\s*', '', str(name)).strip()
 
-def shuffle_question_choices(q_tuple: Tuple) -> Tuple:
-    (q_id, term_name, q_text, c_a, c_b, c_c, c_d, c_ans, exp_beg, exp_adv, cat, sub_cat) = q_tuple
-    orig_choices = {
-        "ア": str(c_a).strip(), "イ": str(c_b).strip(),
-        "ウ": str(c_c).strip(), "エ": str(c_d).strip()
-    }
-    target_correct_text = orig_choices.get(str(c_ans).strip(), str(c_a).strip())
-    choice_texts = [str(c_a).strip(), str(c_b).strip(), str(c_c).strip(), str(c_d).strip()]
-    random.shuffle(choice_texts)
+def split_summary_and_details(exp_text: str) -> Tuple[str, str]:
+    """
+    解説テキストを「要点（短文）」と「詳細（もっと見る部分）」に分割し、
+    選択肢ごとの改行を綺麗に整形して返す
+    """
+    if not exp_text or exp_text == "※解説準備中":
+        return ("※解説準備中", "")
+
+    # 詳細セクションの開始マーカーを検出
+    split_patterns = [
+        r'【各選択肢の解説】', r'【技術詳細と各選択肢】', 
+        r'【技術詳細】', r'・【選択肢[アイウエ]】', 
+        r'【[アイウエ]】', r'選択肢[アイウエ]', r'誤答の解説'
+    ]
     
-    labels = ["ア", "イ", "ウ", "エ"]
-    new_choices = {}
-    new_correct_ans = "ア"
-    for lbl, text in zip(labels, choice_texts):
-        new_choices[lbl] = text
-        if text == target_correct_text:
-            new_correct_ans = lbl
-            
-    return (
-        q_id, term_name, q_text,
-        new_choices["ア"], new_choices["イ"], new_choices["ウ"], new_choices["エ"],
-        new_correct_ans, exp_beg, exp_adv, cat, sub_cat
-    )
+    split_pos = len(exp_text)
+    for pat in split_patterns:
+        m = re.search(pat, exp_text)
+        if m and m.start() < split_pos:
+            split_pos = m.start()
+
+    summary_part = exp_text[:split_pos].strip()
+    details_part = exp_text[split_pos:].strip()
+
+    # マーカーがなかった場合の安全策
+    if not details_part and len(summary_part) > 80:
+        sentences = re.split(r'(?<=。)\s*', exp_text)
+        summary_part = "".join(sentences[:2]).strip()
+        details_part = "".join(sentences[2:]).strip()
+
+    # 詳細部分の改行整形：選択肢の行頭や見出しの前に改行（\n\n）を挿入
+    if details_part:
+        details_part = re.sub(r'\s*(【技術詳細と各選択肢】|【各選択肢の解説】)\s*', r'\1\n\n', details_part)
+        details_part = re.sub(r'\s*(・?【選択肢[アイウエ]】:?)\s*', r'\n\n・\1 ', details_part)
+        details_part = details_part.strip()
+
+    return (summary_part, details_part)
+
+def render_two_tier_explanation(exp_text: str, tab_label: str):
+    """
+    要約を常に表示し、詳細は「▼ もっと見る」アコーディオンで展開表示する
+    """
+    summary_part, details_part = split_summary_and_details(exp_text)
+    
+    # 常に表示する要点（短文）
+    st.info(summary_part)
+    
+    # 隠された詳細解説（アコーディオン）
+    if details_part:
+        with st.expander(f"▼ 詳しい解説・各選択肢の理由をもっと見る（{tab_label}）"):
+            st.markdown(details_part)
 
 # ---------------------------------------------------------
-# セッション状態の安全な初期化
+# セッション状態の初期化
 # ---------------------------------------------------------
 defaults = {
     "logged_in": False,
@@ -205,6 +227,7 @@ defaults = {
     "user_name": "",
     "major_type": "文系・初学者",
     "app_mode": "ホーム",
+    "nav_selection": "🏠 ホーム",
     "current_term": "機密性",
     "quiz_active": False,
     "quiz_questions": [],
@@ -260,23 +283,29 @@ with st.sidebar:
     st.markdown("---")
 
     menu_options = ["🏠 ホーム", "📖 用語を勉強する", "📝 問題を解く", "⭐ 弱点復習リスト"]
-    curr_idx = 0
-    if st.session_state.app_mode == "用語を勉強する":
-        curr_idx = 1
-    elif st.session_state.app_mode == "問題を解く":
-        curr_idx = 2
-    elif st.session_state.app_mode == "弱点復習リスト":
-        curr_idx = 3
+    
+    def on_nav_change():
+        sel = st.session_state.nav_radio
+        mode_map = {
+            "🏠 ホーム": "ホーム",
+            "📖 用語を勉強する": "用語を勉強する",
+            "📝 問題を解く": "問題を解く",
+            "⭐ 弱点復習リスト": "弱点復習リスト"
+        }
+        st.session_state.app_mode = mode_map[sel]
+        st.session_state.nav_selection = sel
+        if mode_map[sel] != "問題を解く":
+            st.session_state.quiz_active = False
 
-    selected_menu = st.radio("ナビゲーション：", menu_options, index=curr_idx)
-    if selected_menu == "🏠 ホーム":
-        st.session_state.app_mode = "ホーム"
-    elif selected_menu == "📖 用語を勉強する":
-        st.session_state.app_mode = "用語を勉強する"
-    elif selected_menu == "📝 問題を解く":
-        st.session_state.app_mode = "問題を解く"
-    elif selected_menu == "⭐ 弱点復習リスト":
-        st.session_state.app_mode = "弱点復習リスト"
+    target_idx = 0
+    if st.session_state.app_mode == "用語を勉強する":
+        target_idx = 1
+    elif st.session_state.app_mode == "問題を解く":
+        target_idx = 2
+    elif st.session_state.app_mode == "弱点復習リスト":
+        target_idx = 3
+
+    st.radio("ナビゲーション：", menu_options, index=target_idx, key="nav_radio", on_change=on_nav_change)
 
     if st.session_state.app_mode == "用語を勉強する":
         st.markdown("---")
@@ -348,7 +377,6 @@ if st.session_state.app_mode == "ホーム":
     st.markdown(f'<h1 translate="no">ようこそ、{st.session_state.user_name} さん！ 👋</h1>', unsafe_allow_html=True)
     st.write("本システムは、学習者の属性に最適化されたマルチアプローチ解説と、出題傾向を模した出題ロジックを備えたFE試験学習システムです。")
     
-    # 個人進捗カード
     with get_db() as conn:
         df_p = pd.read_sql_query("""
         SELECT COUNT(id) as total_ans, SUM(is_correct) as correct_cnt, AVG(response_time_seconds) as avg_time
@@ -369,12 +397,14 @@ if st.session_state.app_mode == "ホーム":
         st.info("### 📖 多角的 用語学習\n初学者向けの「直感的比喩」、実務イメージを深める「実社会応用例」、IPAシラバスの「公式定義」の3層構造で概念理解を深めます。")
         if st.button("用語学習を始める ➔", key="btn_go_study", type="primary"):
             st.session_state.app_mode = "用語を勉強する"
+            st.session_state.quiz_active = False
             st.rerun()
             
     with col2:
         st.success("### 📝 科目A 演習モード\n過去問道場の出題比率を反映した重み付け全分野演習、または特定中分類に絞った特訓演習が可能です。")
         if st.button("実戦問題演習へ進む ➔", key="btn_go_quiz", type="primary"):
             st.session_state.app_mode = "問題を解く"
+            st.session_state.quiz_active = False
             st.rerun()
 
 # ---------------------------------------------------------
@@ -450,6 +480,7 @@ elif st.session_state.app_mode == "用語を勉強する":
 elif st.session_state.app_mode == "問題を解く":
     st.markdown('<h1 translate="no">📝 科目A 実戦問題演習</h1>', unsafe_allow_html=True)
 
+    # 演習設定画面
     if not st.session_state.quiz_active:
         st.subheader("演習セッションの設定")
 
@@ -458,16 +489,17 @@ elif st.session_state.app_mode == "問題を解く":
             quiz_mode = st.radio(
                 "出題モードを選択：",
                 ["🎲 全分野（科目Aの出題率準拠）", "📂 23分野別特訓（中分類指定）"],
-                horizontal=True
+                horizontal=True,
+                key="quiz_mode_radio"
             )
 
             target_subcat = None
             if quiz_mode == "📂 23分野別特訓（中分類指定）":
                 c1, c2 = st.columns(2)
                 with c1:
-                    c_sel_q = st.selectbox("大分類：", list(SYLLABUS_STRUCTURE.keys()))
+                    c_sel_q = st.selectbox("大分類：", list(SYLLABUS_STRUCTURE.keys()), key="sel_cat")
                 with c2:
-                    s_sel_q = st.selectbox("中分類：", SYLLABUS_STRUCTURE[c_sel_q])
+                    s_sel_q = st.selectbox("中分類：", SYLLABUS_STRUCTURE[c_sel_q], key="sel_subcat")
                 target_subcat = s_sel_q
                 
                 cur.execute("""
@@ -480,16 +512,22 @@ elif st.session_state.app_mode == "問題を解く":
                 cur.execute("SELECT COUNT(DISTINCT id) FROM terms_master WHERE question_text IS NOT NULL AND question_text != ''")
                 avail_q_count = cur.fetchone()[0]
                 st.caption(f"全分野合計の出題可能数： **{avail_q_count}** 問")
-                st.info("💡 **本番頻度配分モデル適用中**: テクノロジ約68%・マネジメント約12%・ストラテジ約20%の比率を保ち、出題実績の多い重要中分類から重み付けサンプリングします。[cite: 1, 2, 4]")
+                st.info("💡 **本番頻度配分モデル適用中**: テクノロジ約68%・マネジメント約12%・ストラテジ約20%の比率を保ち、出題実績の多い重要中分類から重み付けサンプリングします。")
 
         if avail_q_count == 0:
             st.warning("出題可能な問題がありません。先に `sync_db.py` でデータを同期してください。")
             st.stop()
 
         max_options = [cnt for cnt in [5, 10, 20, 60] if cnt < avail_q_count] + [avail_q_count]
-        num_choice = st.radio("出題数：", max_options, format_func=lambda x: f"{x}問 （全問演習）" if x == avail_q_count else f"{x}問", horizontal=True)
+        num_choice = st.radio(
+            "出題数：", 
+            max_options, 
+            format_func=lambda x: f"{x}問 （全問演習）" if x == avail_q_count else f"{x}問", 
+            horizontal=True,
+            key="num_choice_radio"
+        )
 
-        if st.button("🚀 演習を開始する", type="primary"):
+        if st.button("🚀 演習を開始する", type="primary", key="btn_start_quiz"):
             with get_db() as conn:
                 if quiz_mode == "📂 23分野別特訓（中分類指定）":
                     cur = conn.cursor()
@@ -512,11 +550,9 @@ elif st.session_state.app_mode == "問題を解く":
                     WHERE question_text IS NOT NULL AND question_text != ''
                     """, conn)
 
-                    # 重複IDの排除
                     df_all = df_all.drop_duplicates(subset=["id"]).set_index("id", drop=False)
                     df_all["weight"] = df_all.apply(lambda r: PAST_EXAM_WEIGHTS.get(clean_subcat_name(r["sub_category"]), 30), axis=1)
 
-                    # 全問演習（全件取得）が選ばれた場合はサンプリングを行わずに全件シャッフル
                     if num_choice >= len(df_all):
                         df_selected = df_all.sample(frac=1).reset_index(drop=True)
                     else:
@@ -534,7 +570,6 @@ elif st.session_state.app_mode == "問題を解く":
                             if needed <= 0 or len(sub_df) == 0:
                                 continue
                             
-                            # 抽出必要数が母集団以上の場合は全件取得
                             if needed >= len(sub_df):
                                 s = sub_df.copy()
                             else:
@@ -545,7 +580,6 @@ elif st.session_state.app_mode == "問題を解く":
 
                         df_selected = pd.concat(sampled_dfs) if sampled_dfs else pd.DataFrame()
                         
-                        # 端数調整
                         if len(df_selected) < num_choice:
                             diff = num_choice - len(df_selected)
                             rem = df_all[~df_all.index.isin(selected_indices)]
@@ -565,7 +599,7 @@ elif st.session_state.app_mode == "問題を解く":
                         "explanation_advanced", "category", "sub_category"
                     ]].values]
 
-            st.session_state.quiz_questions = [shuffle_question_choices(q) for q in raw_selected]
+            st.session_state.quiz_questions = raw_selected
             st.session_state.quiz_index = 0
             st.session_state.quiz_user_answers = {}
             st.session_state.quiz_answered_current = False
@@ -573,6 +607,7 @@ elif st.session_state.app_mode == "問題を解く":
             st.session_state.q_start_time = time.time()
             st.rerun()
 
+    # 演習実行画面
     else:
         q_list = st.session_state.quiz_questions
         idx = st.session_state.quiz_index
@@ -607,9 +642,9 @@ elif st.session_state.app_mode == "問題を解く":
                     
                     t1, t2 = st.tabs(["🌱 初学者・文系向け解説", "🔬 情報科学科向け技術解説"])
                     with t1:
-                        st.info(exp_beg if exp_beg else "※解説準備中")
+                        render_two_tier_explanation(exp_beg, "初学者・文系")
                     with t2:
-                        st.info(exp_adv if exp_adv else "※解説準備中")
+                        render_two_tier_explanation(exp_adv, "情報科学科・理系")
 
             if st.button("🔄 新しい演習を開始する", type="primary"):
                 st.session_state.quiz_active = False
@@ -622,22 +657,25 @@ elif st.session_state.app_mode == "問題を解く":
 
             st.progress((idx + 1) / total)
             
-            # ヘッダー表示（ネタバレ排除）
             col_h1, col_h2 = st.columns([3, 1])
             with col_h1:
                 st.caption(f"問題 {idx + 1} / {total} ｜ 出題分野: **{sub_cat}**")
             with col_h2:
-                # 認知的負荷軽減のための目安タイム表示
-                st.caption(f"⏱️ 推奨解答時間: 90秒以内")
+                st.caption("⏱️ 推奨解答時間: 90秒以内")
 
             st.markdown(f'<h3 translate="no">Q{idx + 1}. {q_text}</h3>', unsafe_allow_html=True)
 
             choices = [f"ア: {c_a}", f"イ: {c_b}", f"ウ: {c_c}", f"エ: {c_d}"]
-            user_choice = st.radio("選択肢：", choices, key=f"q_radio_{idx}", disabled=st.session_state.quiz_answered_current)
+            user_choice = st.radio(
+                "選択肢：", 
+                choices, 
+                key=f"q_radio_choice_{idx}", 
+                disabled=st.session_state.quiz_answered_current
+            )
             selected_char = user_choice[0]
 
             if not st.session_state.quiz_answered_current:
-                if st.button("回答を送信する", type="primary"):
+                if st.button("回答を送信する", type="primary", key=f"btn_submit_{idx}"):
                     elapsed_time = round(time.time() - (st.session_state.q_start_time or time.time()), 2)
                     is_correct = (selected_char == c_ans.strip())
 
@@ -649,7 +687,6 @@ elif st.session_state.app_mode == "問題を解く":
                     }
                     st.session_state.quiz_answered_current = True
 
-                    # テレメトリログ保存
                     with get_db() as conn:
                         cur = conn.cursor()
                         cur.execute("""
@@ -667,13 +704,11 @@ elif st.session_state.app_mode == "問題を解く":
                 else:
                     st.error(f"❌ 不正解です... あなたの回答：{ans_data['selected']}（正解：{c_ans} ｜ 解答時間: {ans_data['response_time']}秒）")
 
-                # 正誤判定後に初めて用語名を提示（認知的定着）
                 col_info, col_bm = st.columns([3, 1])
                 with col_info:
                     st.info(f"💡 出題対象用語: **{q_term}** （{cat} ＞ {sub_cat}）")
                 with col_bm:
-                    # 弱点ブックマーク登録機能
-                    if st.button("⭐ 要復習リストに保存"):
+                    if st.button("⭐ 要復習リストに保存", key=f"btn_bm_{idx}"):
                         with get_db() as conn:
                             cur = conn.cursor()
                             cur.execute("""
@@ -687,29 +722,30 @@ elif st.session_state.app_mode == "問題を解く":
                 st.subheader("💡 学習者属性別 詳細解説")
                 
                 # ユーザー属性に適合する解説を主タブとして前面表示
+                # 最初は要点のみが表示され、詳細解説は「▼ もっと見る」アコーディオンで展開可能
                 if st.session_state.major_type == "情報科学科・理系":
                     tab_main, tab_sub = st.tabs(["🔬 情報科学科向け技術解説（主解説）", "🌱 初学者・文系向け解説"])
                     with tab_main:
-                        st.info(exp_adv if exp_adv else "※解説準備中")
+                        render_two_tier_explanation(exp_adv, "情報科学科向け技術解説")
                     with tab_sub:
-                        st.info(exp_beg if exp_beg else "※解説準備中")
+                        render_two_tier_explanation(exp_beg, "初学者・文系向け解説")
                 else:
                     tab_main, tab_sub = st.tabs(["🌱 初学者・文系向け解説（主解説）", "🔬 情報科学科向け技術解説"])
                     with tab_main:
-                        st.info(exp_beg if exp_beg else "※解説準備中")
+                        render_two_tier_explanation(exp_beg, "初学者・文系向け解説")
                     with tab_sub:
-                        st.info(exp_adv if exp_adv else "※解説準備中")
+                        render_two_tier_explanation(exp_adv, "情報科学科向け技術解説")
 
                 c_next, c_abort = st.columns([1, 1])
                 with c_next:
                     btn_text = "次の問題へ ➔" if (idx + 1) < total else "演習結果を確認する 🏆"
-                    if st.button(btn_text, type="primary"):
+                    if st.button(btn_text, type="primary", key=f"btn_next_{idx}"):
                         st.session_state.quiz_index += 1
                         st.session_state.quiz_answered_current = False
                         st.session_state.q_start_time = time.time()
                         st.rerun()
                 with c_abort:
-                    if st.button("演習を中断してホームに戻る"):
+                    if st.button("演習を中断して設定に戻る", key=f"btn_abort_{idx}"):
                         st.session_state.quiz_active = False
                         st.rerun()
 
@@ -743,11 +779,11 @@ elif st.session_state.app_mode == "弱点復習リスト":
                 
                 t1, t2 = st.tabs(["🌱 文系・初学者向け解説", "🔬 情報系向け詳細技術解説"])
                 with t1:
-                    st.info(row['exp_beg'] if row['exp_beg'] else "解説準備中")
+                    render_two_tier_explanation(row['exp_beg'], "文系・初学者")
                 with t2:
-                    st.info(row['exp_adv'] if row['exp_adv'] else "解説準備中")
+                    render_two_tier_explanation(row['exp_adv'], "情報系向け")
                 
-                if st.button(f"🗑️ 復習完了（リストから削除）", key=f"del_bm_{row['bm_id']}"):
+                if st.button("🗑️ 復習完了（リストから削除）", key=f"del_bm_{row['bm_id']}"):
                     with get_db() as conn:
                         cur = conn.cursor()
                         cur.execute("DELETE FROM quiz_bookmarks WHERE id = ?", (row['bm_id'],))
