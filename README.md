@@ -42,8 +42,8 @@ Excelファイル（fe_study_master_23sheets.xlsx）の内容をSQLiteデータ�
 ### 5. GitHubに保存する
 
 #### git add -A
-#### git commit -m "DB同期と最新データの反映"
-#### git pull --rebase origin main && git push origin main
+#### git commit -m "〇〇/3376 用語 登録完了"
+#### git add README.mdgit pull --rebase origin main && git push origin main
 
 
 ### 6. アプリを起動
