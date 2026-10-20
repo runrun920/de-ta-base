@@ -239,7 +239,7 @@ def sync_database():
     print("-" * 60)
     print("\n🚀 【GitHub更新コマンド】次の3行をターミナルで実行してください:")
     print("git add -A")
-    print('git commit -m "DB同期と最新データの反映"')
+    print('git commit -m "〇〇/3376 用語 登録完了"')
     print("git pull --rebase origin main && git push origin main\n")
 
 if __name__ == "__main__":
