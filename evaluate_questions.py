@@ -1,3 +1,6 @@
+"""
+問題文と解説が正しいか精査するプログラム
+"""
 import os
 import sys
 import time
