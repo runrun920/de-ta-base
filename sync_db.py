@@ -1,246 +1,253 @@
-# 一度作ったデータベース（fe_study.db）を初期化（DROP）せず、既存のログや学習者データを守りながら、新データだけを追加・更新するプログラム
-# 本番・データ追記用の「差分同期（壊さない）」用
-
+import os
+import sys
 import sqlite3
 import pandas as pd
-import os
+import openpyxl
 
-CSV_FILE = "fe_study_master.csv"
-XLSX_FILE = "fe_study_master_23sheets.xlsx"
+MASTER_FILE = "fe_study_master_23sheets.xlsx"
 DB_FILE = "fe_study.db"
 
-def sync_database():
-    # 1. データの読み込み
-    if os.path.exists(XLSX_FILE):
-        print(f"1. {XLSX_FILE} から最新データを読み込み中...")
-        excel = pd.ExcelFile(XLSX_FILE)
-        dfs = [pd.read_excel(XLSX_FILE, sheet_name=s) for s in excel.sheet_names if s != "全用語一覧"]
-        df = pd.concat(dfs, ignore_index=True)
-    elif os.path.exists(CSV_FILE):
-        print(f"1. {CSV_FILE} から最新データを読み込み中...")
-        df = pd.read_csv(CSV_FILE, encoding="utf-8-sig")
-    else:
-        print("エラー: ソースファイルが見つかりません。")
-        return
+if not os.path.exists(MASTER_FILE):
+    print(f"❌ エクセルファイルが見つかりません: {MASTER_FILE}")
+    sys.exit(1)
 
-    print(f"2. 既存の {DB_FILE} を保持したまま、差分同期（UPSERT）を開始します...")
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
+if not os.path.exists(DB_FILE):
+    print(f"❌ データベースファイルが見つかりません: {DB_FILE}")
+    sys.exit(1)
 
-    # テーブルが存在しない場合のみ作成（DROPは絶対にしない）
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS terms (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        term_name TEXT UNIQUE,
-        category TEXT,
-        sub_category TEXT,
-        official_def TEXT,
-        url TEXT
-    )
-    """)
+# --- 1. 同期前のDB状態を記録（差分集計用） ---
+conn_pre = sqlite3.connect(DB_FILE)
+cur_pre = conn_pre.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS term_metaphors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        term_id INTEGER,
-        metaphor_text TEXT,
-        source_ai TEXT,
-        UNIQUE(term_id, source_ai),
-        FOREIGN KEY (term_id) REFERENCES terms(id)
-    )
-    """)
+# 既存の (term_id, question_type) ペアをセット化
+cur_pre.execute("SELECT term_id, question_type FROM questions;")
+pre_existing_q = set(cur_pre.fetchall())
+pre_total_q_count = len(pre_existing_q)
+conn_pre.close()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS term_examples (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        term_id INTEGER,
-        example_text TEXT,
-        source_ai TEXT,
-        UNIQUE(term_id, source_ai),
-        FOREIGN KEY (term_id) REFERENCES terms(id)
-    )
-    """)
+print(f"1. 📖 {MASTER_FILE} から最新データを読み込み中...")
+excel_file = pd.ExcelFile(MASTER_FILE)
+all_sheets = excel_file.sheet_names
+print(f"   検出シート数: {len(all_sheets)} シート")
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS questions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        term_id INTEGER,
-        question_text TEXT UNIQUE,
-        choice_a TEXT,
-        choice_b TEXT,
-        choice_c TEXT,
-        choice_d TEXT,
-        correct_ans TEXT,
-        FOREIGN KEY (term_id) REFERENCES terms(id)
-    )
-    """)
+# 読み取り対象カラム定義
+TERM_COLS = [
+    "category", "sub_category", "official_def", "url", 
+    "intuitive_def_final", "practical_example_final"
+]
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS question_explanations_beginner (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question_id INTEGER UNIQUE,
-        explanation TEXT,
-        FOREIGN KEY (question_id) REFERENCES questions(id)
-    )
-    """)
+Q1_COLS = [
+    "question_text", "choice_a", "choice_b", "choice_c", "choice_d", "correct_ans",
+    "exp_beginner_final", "exp_advanced_final"
+]
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS question_explanations_advanced (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        question_id INTEGER UNIQUE,
-        explanation TEXT,
-        FOREIGN KEY (question_id) REFERENCES questions(id)
-    )
-    """)
+Q2_COLS = [
+    "q2_question_text", "q2_choice_a", "q2_choice_b", "q2_choice_c", "q2_choice_d", "q2_correct_ans",
+    "q2_exp_beginner_final", "q2_exp_advanced_final"
+]
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS term_categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        term_name TEXT,
-        category TEXT,
-        sub_category TEXT
-    )
-    """)
+ALL_READ_COLS = TERM_COLS + Q1_COLS + Q2_COLS
 
-    # ビューの再作成（定義更新のため）
-    cur.execute("DROP VIEW IF EXISTS terms_master")
-    cur.execute("""
-    CREATE VIEW terms_master AS
-    SELECT 
-        q.id AS id,
-        t.term_name,
-        t.category,
-        t.sub_category,
-        t.official_def,
-        m.metaphor_text AS intuitive_def,
-        e.example_text AS practical_example,
-        q.question_text,
-        q.choice_a,
-        q.choice_b,
-        q.choice_c,
-        q.choice_d,
-        q.correct_ans,
-        qeb.explanation AS explanation_beginner,
-        qea.explanation AS explanation_advanced
-    FROM questions q
-    JOIN terms t ON q.term_id = t.id
-    LEFT JOIN term_metaphors m ON t.id = m.term_id AND m.source_ai = 'Final'
-    LEFT JOIN term_examples e ON t.id = e.term_id AND e.source_ai = 'Final'
-    LEFT JOIN question_explanations_beginner qeb ON q.id = qeb.question_id
-    LEFT JOIN question_explanations_advanced qea ON q.id = qea.question_id
-    """)
+merged_data = {}
 
-    added_terms = 0
-    updated_terms = 0
-    added_questions = 0
+def clean_val(v):
+    if pd.isna(v):
+        return None
+    s = str(v).strip()
+    return None if s in ["", "nan", "None"] else s
 
-    # 差分同期ループ
-    for _, row in df.iterrows():
-        t_name = str(row.get("term_name", "")).strip()
-        if not t_name or t_name == "nan":
+# ① 「全用語一覧」ベース読み込み
+if "全用語一覧" in all_sheets:
+    df_all = pd.read_excel(MASTER_FILE, sheet_name="全用語一覧")
+    if "term_name" in df_all.columns:
+        for _, row in df_all.iterrows():
+            t_name = clean_val(row.get("term_name"))
+            if not t_name:
+                continue
+            item = {"term_name": t_name}
+            for col in ALL_READ_COLS:
+                item[col] = clean_val(row.get(col))
+            merged_data[t_name] = item
+
+# ② 23個別シートから最新データをマージ
+for s_name in all_sheets:
+    if s_name in ["全用語一覧", "サマリー＆ガイドライン"]:
+        continue
+    
+    df_sub = pd.read_excel(MASTER_FILE, sheet_name=s_name)
+    if "term_name" not in df_sub.columns:
+        continue
+        
+    for _, row in df_sub.iterrows():
+        t_name = clean_val(row.get("term_name"))
+        if not t_name:
             continue
+            
+        if t_name not in merged_data:
+            merged_data[t_name] = {"term_name": t_name}
+            for col in ALL_READ_COLS:
+                merged_data[t_name][col] = None
 
-        cat = str(row.get("category", "")).strip()
-        sub_cat = str(row.get("sub_category", "")).strip()
-        off_def = str(row.get("kakomon_official_def", "")).strip()
-        url = str(row.get("kakomon_url", "")).strip()
+        for col in ALL_READ_COLS:
+            val = clean_val(row.get(col))
+            if val is not None:
+                merged_data[t_name][col] = val
 
-        # 1. 用語マスター（新規追加または更新）
-        cur.execute("SELECT id FROM terms WHERE term_name = ?", (t_name,))
-        res = cur.fetchone()
-        if res:
-            term_id = res[0]
-            cur.execute("""
-            UPDATE terms SET category=?, sub_category=?, official_def=?, url=?
-            WHERE id=?
-            """, (cat, sub_cat, off_def, url, term_id))
-            updated_terms += 1
+print(f"   統合完了: 合計 {len(merged_data)} 件の用語データを検出しました。")
+
+# --- 2. 正規化DBへのUPSERT同期 ---
+print(f"2. 🔄 {DB_FILE} への同期（正規化UPSERT）を開始します...")
+conn = sqlite3.connect(DB_FILE)
+cursor = conn.cursor()
+cursor.execute("PRAGMA foreign_keys = ON;")
+
+term_update_count = 0
+term_insert_count = 0
+
+for t_name, data in merged_data.items():
+    # 2-1. terms テーブルの同期
+    cursor.execute("SELECT id FROM terms WHERE term_name = ?;", (t_name,))
+    row = cursor.fetchone()
+    
+    cat = data.get("category")
+    subcat = data.get("sub_category")
+    off_def = data.get("official_def")
+    url = data.get("url")
+    int_def = data.get("intuitive_def_final")
+    prac_ex = data.get("practical_example_final")
+    
+    if row:
+        term_id = row[0]
+        cursor.execute("""
+            UPDATE terms SET 
+                category = COALESCE(?, category),
+                sub_category = COALESCE(?, sub_category),
+                official_def = COALESCE(?, official_def),
+                url = COALESCE(?, url),
+                intuitive_def = COALESCE(?, intuitive_def),
+                practical_example = COALESCE(?, practical_example)
+            WHERE id = ?;
+        """, (cat, subcat, off_def, url, int_def, prac_ex, term_id))
+        term_update_count += 1
+    else:
+        cursor.execute("""
+            INSERT INTO terms (term_name, category, sub_category, official_def, url, intuitive_def, practical_example)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (t_name, cat, subcat, off_def, url, int_def, prac_ex))
+        term_id = cursor.lastrowid
+        term_insert_count += 1
+
+    # 2-2. Q1（正当選択）の同期
+    q1_text = data.get("question_text")
+    if q1_text:
+        cursor.execute("SELECT id FROM questions WHERE term_id = ? AND question_type = '正当選択';", (term_id,))
+        q1_row = cursor.fetchone()
+        
+        c_a, c_b, c_c, c_d = data.get("choice_a"), data.get("choice_b"), data.get("choice_c"), data.get("choice_d")
+        ans = data.get("correct_ans")
+        exp_b = data.get("exp_beginner_final")
+        exp_a = data.get("exp_advanced_final")
+        
+        if q1_row:
+            qid = q1_row[0]
+            cursor.execute("""
+                UPDATE questions SET 
+                    question_text = ?, choice_a = ?, choice_b = ?, choice_c = ?, choice_d = ?, correct_ans = ?
+                WHERE id = ?;
+            """, (q1_text, c_a, c_b, c_c, c_d, ans, qid))
+            cursor.execute("""
+                INSERT INTO question_explanations (question_id, exp_beginner, exp_advanced)
+                VALUES (?, ?, ?)
+                ON CONFLICT(question_id) DO UPDATE SET 
+                    exp_beginner = excluded.exp_beginner, 
+                    exp_advanced = excluded.exp_advanced;
+            """, (qid, exp_b, exp_a))
         else:
-            cur.execute("""
-            INSERT INTO terms (term_name, category, sub_category, official_def, url)
-            VALUES (?, ?, ?, ?, ?)
-            """, (t_name, cat, sub_cat, off_def, url))
-            term_id = cur.lastrowid
-            added_terms += 1
+            cursor.execute("""
+                INSERT INTO questions (term_id, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_ans)
+                VALUES (?, '正当選択', ?, ?, ?, ?, ?, ?);
+            """, (term_id, q1_text, c_a, c_b, c_c, c_d, ans))
+            qid = cursor.lastrowid
+            cursor.execute("""
+                INSERT INTO question_explanations (question_id, exp_beginner, exp_advanced)
+                VALUES (?, ?, ?);
+            """, (qid, exp_b, exp_a))
 
-        # 2. 比喩
-        int_f = str(row.get("intuitive_def_final", "")).strip()
-        if int_f and int_f != "nan":
-            cur.execute("SELECT id FROM term_metaphors WHERE term_id=? AND source_ai='Final'", (term_id,))
-            m_res = cur.fetchone()
-            if m_res:
-                cur.execute("UPDATE term_metaphors SET metaphor_text=? WHERE id=?", (int_f, m_res[0]))
-            else:
-                cur.execute("INSERT INTO term_metaphors (term_id, metaphor_text, source_ai) VALUES (?, ?, 'Final')", (term_id, int_f))
+    # 2-3. Q2（不適当選択）の同期
+    q2_text = data.get("q2_question_text")
+    if q2_text:
+        cursor.execute("SELECT id FROM questions WHERE term_id = ? AND question_type = '不適当選択';", (term_id,))
+        q2_row = cursor.fetchone()
+        
+        c2_a, c2_b, c2_c, c2_d = data.get("q2_choice_a"), data.get("q2_choice_b"), data.get("q2_choice_c"), data.get("q2_choice_d")
+        ans2 = data.get("q2_correct_ans")
+        exp2_b = data.get("q2_exp_beginner_final")
+        exp2_a = data.get("q2_exp_advanced_final")
+        
+        if q2_row:
+            q2id = q2_row[0]
+            cursor.execute("""
+                UPDATE questions SET 
+                    question_text = ?, choice_a = ?, choice_b = ?, choice_c = ?, choice_d = ?, correct_ans = ?
+                WHERE id = ?;
+            """, (q2_text, c2_a, c2_b, c2_c, c2_d, ans2, q2id))
+            cursor.execute("""
+                INSERT INTO question_explanations (question_id, exp_beginner, exp_advanced)
+                VALUES (?, ?, ?)
+                ON CONFLICT(question_id) DO UPDATE SET 
+                    exp_beginner = excluded.exp_beginner, 
+                    exp_advanced = excluded.exp_advanced;
+            """, (q2id, exp2_b, exp2_a))
+        else:
+            cursor.execute("""
+                INSERT INTO questions (term_id, question_type, question_text, choice_a, choice_b, choice_c, choice_d, correct_ans)
+                VALUES (?, '不適当選択', ?, ?, ?, ?, ?, ?);
+            """, (term_id, q2_text, c2_a, c2_b, c2_c, c2_d, ans2))
+            q2id = cursor.lastrowid
+            cursor.execute("""
+                INSERT INTO question_explanations (question_id, exp_beginner, exp_advanced)
+                VALUES (?, ?, ?);
+            """, (q2id, exp2_b, exp2_a))
 
-        # 3. 実用例
-        prac_f = str(row.get("practical_example_final", "")).strip()
-        if prac_f and prac_f != "nan":
-            cur.execute("SELECT id FROM term_examples WHERE term_id=? AND source_ai='Final'", (term_id,))
-            e_res = cur.fetchone()
-            if e_res:
-                cur.execute("UPDATE term_examples SET example_text=? WHERE id=?", (prac_f, e_res[0]))
-            else:
-                cur.execute("INSERT INTO term_examples (term_id, example_text, source_ai) VALUES (?, ?, 'Final')", (term_id, prac_f))
+conn.commit()
 
-        # 4. 問題
-        q_text = str(row.get("question_text", "")).strip()
-        if q_text and q_text != "nan":
-            ca = str(row.get("choice_a", "")).strip()
-            cb = str(row.get("choice_b", "")).strip()
-            cc = str(row.get("choice_c", "")).strip()
-            cd = str(row.get("choice_d", "")).strip()
-            ans = str(row.get("correct_ans", "")).strip()
+# --- 3. 差分と内訳の集計 ---
+cursor.execute("SELECT q.term_id, q.question_type, t.sub_category FROM questions q JOIN terms t ON q.term_id = t.id;")
+post_q_records = cursor.fetchall()
+post_total_q_count = len(post_q_records)
 
-            cur.execute("SELECT id FROM questions WHERE question_text = ?", (q_text,))
-            q_res = cur.fetchone()
-            if q_res:
-                q_id = q_res[0]
-                cur.execute("""
-                UPDATE questions SET choice_a=?, choice_b=?, choice_c=?, choice_d=?, correct_ans=?
-                WHERE id=?
-                """, (ca, cb, cc, cd, ans, q_id))
-            else:
-                cur.execute("""
-                INSERT INTO questions (term_id, question_text, choice_a, choice_b, choice_c, choice_d, correct_ans)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (term_id, q_text, ca, cb, cc, cd, ans))
-                q_id = cur.lastrowid
-                added_questions += 1
+newly_added_count = 0
+newly_by_cat = {}
 
-            # 文系解説
-            exp_b = str(row.get("exp_beginner_final", "")).strip()
-            if exp_b and exp_b != "nan":
-                cur.execute("SELECT id FROM question_explanations_beginner WHERE question_id = ?", (q_id,))
-                qb_res = cur.fetchone()
-                if qb_res:
-                    cur.execute("UPDATE question_explanations_beginner SET explanation=? WHERE id=?", (exp_b, qb_res[0]))
-                else:
-                    cur.execute("INSERT INTO question_explanations_beginner (question_id, explanation) VALUES (?, ?)", (q_id, exp_b))
+for term_id, qtype, subcat in post_q_records:
+    if (term_id, qtype) not in pre_existing_q:
+        newly_added_count += 1
+        key = f"{subcat} ({qtype})"
+        newly_by_cat[key] = newly_by_cat.get(key, 0) + 1
 
-            # 情報科学科解説
-            exp_a = str(row.get("exp_advanced_final", "")).strip()
-            if exp_a and exp_a != "nan":
-                cur.execute("SELECT id FROM question_explanations_advanced WHERE question_id = ?", (q_id,))
-                qa_res = cur.fetchone()
-                if qa_res:
-                    cur.execute("UPDATE question_explanations_advanced SET explanation=? WHERE id=?", (exp_a, qa_res[0]))
-                else:
-                    cur.execute("INSERT INTO question_explanations_advanced (question_id, explanation) VALUES (?, ?)", (q_id, exp_a))
+# Q1/Q2それぞれの総数
+cursor.execute("SELECT count(*) FROM questions WHERE question_type = '正当選択';")
+total_q1 = cursor.fetchone()[0]
+cursor.execute("SELECT count(*) FROM questions WHERE question_type = '不適当選択';")
+total_q2 = cursor.fetchone()[0]
 
-    conn.commit()
-    conn.close()
+conn.close()
 
-    print("-" * 60)
-    print(f"✅ 同期完了！")
-    print(f"   - 新規用語追加: {added_terms} 件 / 更新: {updated_terms} 件")
-    print(f"   - 新規問題追加: {added_questions} 件")
-    print(f"   - 解答ログ (quiz_logs) や 閲覧ログ (term_logs) は一切壊れていません。")
-    print("-" * 60)
-    print("\n🚀 【GitHub更新コマンド】次の3行をターミナルで実行してください:")
-    print("git add -A")
-    print('git commit -m "〇〇/3376 用語 登録完了"')
-    print("git pull --rebase origin main && git push origin main\n")
+print("-" * 65)
+print(f"✅ 同期完了！")
+print(f"   - 用語マスター更新: {term_update_count} 件 （新規追加: {term_insert_count} 件）")
+print(f"   - 💡 今回新しくDBへ登録された問題: 【 {newly_added_count} 件 】")
+print(f"   - 📊 DB内問題総数: {post_total_q_count} 件 (正当選択: {total_q1} 件 / 不適当選択: {total_q2} 件)")
 
-if __name__ == "__main__":
-    sync_database()
+if newly_added_count > 0:
+    print("\n   [今回追加された問題の内訳]")
+    for cat_name, cnt in sorted(newly_by_cat.items()):
+        print(f"     * {cat_name}: +{cnt} 件")
+
+print(f"\n   - 解答ログ (quiz_logs) や 閲覧ログ (term_logs) は一切壊れていません。")
+print("-" * 65)
+
+print("\n🚀 【GitHub更新コマンド】次の3行をターミナルで実行してください:")
+print("git add -A")
+print(f'git commit -m "{post_total_q_count}問 (Q1:{total_q1}, Q2:{total_q2}) 同期完了"')
+print("git pull --rebase origin main && git push origin main\n")
