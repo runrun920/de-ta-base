@@ -248,6 +248,6 @@ print(f"\n   - 解答ログ (quiz_logs) や 閲覧ログ (term_logs) は一切�
 print("-" * 65)
 
 print("\n🚀 【GitHub更新コマンド】次の3行をターミナルで実行してください:")
-print("git add -A")
+print("git add fe_study_master_23sheets.xlsx fe_study.db")
 print(f'git commit -m "{post_total_q_count}問 (Q1:{total_q1}, Q2:{total_q2}) 同期完了"')
 print("git pull --rebase origin main && git push origin main\n")
