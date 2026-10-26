@@ -316,7 +316,7 @@ with st.sidebar:
             cur = conn.cursor()
             if search_mode == "キーワード検索":
                 try:
-                    cur.execute("SELECT term_name FROM terms_master ORDER BY id")
+                    cur.execute("SELECT DISTINCT term_name FROM terms_master ORDER BY id")
                     ordered_terms = [r[0] for r in cur.fetchall()]
                 except Exception:
                     ordered_terms = []
@@ -335,7 +335,7 @@ with st.sidebar:
                 s_sel = st.selectbox("2. 中分類：", SYLLABUS_STRUCTURE[c_sel])
 
                 try:
-                    cur.execute("SELECT term_name FROM terms_master WHERE sub_category = ?", (s_sel,))
+                    cur.execute("SELECT DISTINCT term_name FROM terms_master WHERE sub_category = ?", (s_sel,))
                     f_terms = [r[0] for r in cur.fetchall()]
                 except Exception:
                     f_terms = []
@@ -575,7 +575,7 @@ elif st.session_state.app_mode == "問題を解く":
                             else:
                                 s = sub_df.sample(n=needed, weights="weight", replace=False)
                             
-                            selected_indices.update(s.index.tolist())
+                            selected_indices.update(s.index.drop_duplicates().tolist())
                             sampled_dfs.append(s)
 
                         df_selected = pd.concat(sampled_dfs) if sampled_dfs else pd.DataFrame()
