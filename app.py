@@ -161,20 +161,83 @@ PAST_EXAM_WEIGHTS = {
     "企業活動": 207, "法務": 101
 }
 
+def format_official_definition(raw_text: str) -> str:
+    """
+    過去問道場の公式定義テキストを整形し、
+    読み・英語（同値または次行に値がある場合の両方に対応）を抽出し、
+    分類タグを除去して改行付きで表示する
+    """
+    if not raw_text or str(raw_text).strip() in ["", "nan", "None"]:
+        return ""
+    
+    text = str(raw_text).strip()
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    
+    reading = ""
+    english = ""
+    body_lines = []
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        
+        # 読みの判定
+        if line.startswith("読み") and any(sep in line for sep in [":", "："]):
+            val = line.split(":", 1)[-1].split("：", 1)[-1].strip()
+            if not val and i + 1 < len(lines):
+                val = lines[i + 1].strip()
+                i += 1
+            reading = val
+            i += 1
+            continue
+            
+        # 英語の判定
+        if line.startswith("英語") and any(sep in line for sep in [":", "："]):
+            val = line.split(":", 1)[-1].split("：", 1)[-1].strip()
+            if not val and i + 1 < len(lines):
+                val = lines[i + 1].strip()
+                i += 1
+            english = val
+            i += 1
+            continue
+            
+        # 分類タグ（数字開始の行 例: 5 ソフトウェア, 5-2 タスク管理）の除外
+        first_word = line.split()[0] if line.split() else ""
+        if any(first_word.startswith(f"{n}") for n in range(1, 24)):
+            i += 1
+            continue
+            
+        # 用語概要ヘッダー（例: "オペレーティングシステム - 82語...", "OS"）の除外
+        if not body_lines and len(line) < 40 and not any(k in line for k in ["。", "、", "である", "です", "手法", "方式", "こと"]):
+            i += 1
+            continue
+            
+        body_lines.append(line)
+        i += 1
+
+    output = []
+    if reading:
+        output.append(f"**読み**： {reading}")
+    if english:
+        output.append(f"**英語**： {english}")
+    if output and body_lines:
+        output.append("---")
+        
+    if body_lines:
+        output.append("\n\n".join(body_lines))
+        
+    return "\n\n".join(output) if output else text
+
+
 def clean_subcat_name(name: str) -> str:
     if not name:
         return ""
     return re.sub(r'^\d+\.\s*', '', str(name)).strip()
 
 def split_summary_and_details(exp_text: str) -> Tuple[str, str]:
-    """
-    解説テキストを「要点（短文）」と「詳細（もっと見る部分）」に分割し、
-    選択肢ごとの改行を綺麗に整形して返す
-    """
     if not exp_text or exp_text == "※解説準備中":
         return ("※解説準備中", "")
 
-    # 詳細セクションの開始マーカーを検出
     split_patterns = [
         r'【各選択肢の解説】', r'【技術詳細と各選択肢】', 
         r'【技術詳細】', r'・【選択肢[アイウエ]】', 
@@ -190,13 +253,11 @@ def split_summary_and_details(exp_text: str) -> Tuple[str, str]:
     summary_part = exp_text[:split_pos].strip()
     details_part = exp_text[split_pos:].strip()
 
-    # マーカーがなかった場合の安全策
     if not details_part and len(summary_part) > 80:
         sentences = re.split(r'(?<=。)\s*', exp_text)
         summary_part = "".join(sentences[:2]).strip()
         details_part = "".join(sentences[2:]).strip()
 
-    # 詳細部分の改行整形：選択肢の行頭や見出しの前に改行（\n\n）を挿入
     if details_part:
         details_part = re.sub(r'\s*(【技術詳細と各選択肢】|【各選択肢の解説】)\s*', r'\1\n\n', details_part)
         details_part = re.sub(r'\s*(・?【選択肢[アイウエ]】:?)\s*', r'\n\n・\1 ', details_part)
@@ -205,15 +266,8 @@ def split_summary_and_details(exp_text: str) -> Tuple[str, str]:
     return (summary_part, details_part)
 
 def render_two_tier_explanation(exp_text: str, tab_label: str):
-    """
-    要約を常に表示し、詳細は「▼ もっと見る」アコーディオンで展開表示する
-    """
     summary_part, details_part = split_summary_and_details(exp_text)
-    
-    # 常に表示する要点（短文）
     st.info(summary_part)
-    
-    # 隠された詳細解説（アコーディオン）
     if details_part:
         with st.expander(f"▼ 詳しい解説・各選択肢の理由をもっと見る（{tab_label}）"):
             st.markdown(details_part)
@@ -408,14 +462,14 @@ if st.session_state.app_mode == "ホーム":
             st.rerun()
 
 # ---------------------------------------------------------
-# メイン画面：用語学習（3層マルチアプローチ）
+# メイン画面：用語学習（3層マルチアプローチ ＋ イラスト図解）
 # ---------------------------------------------------------
 elif st.session_state.app_mode == "用語を勉強する":
     curr = st.session_state.current_term
     
     with get_db() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, category, sub_category, official_def, url FROM terms WHERE term_name = ?", (curr,))
+        cur.execute("SELECT id, category, sub_category, official_def, url, image_path FROM terms WHERE term_name = ?", (curr,))
         term_row = cur.fetchone()
         
         term_id = term_row[0] if term_row else None
@@ -423,6 +477,7 @@ elif st.session_state.app_mode == "用語を勉強する":
         sub_cat = term_row[2] if term_row else "未分類"
         off_def = term_row[3] if term_row else ""
         url = term_row[4] if term_row else ""
+        img_path = term_row[5] if term_row and len(term_row) > 5 else None
 
         int_def = ""
         if term_id:
@@ -444,6 +499,9 @@ elif st.session_state.app_mode == "用語を勉強する":
 
     st.caption(f"📚 {cat} ＞ {sub_cat}")
     st.markdown(f'<h1 translate="no">💻 {curr}</h1>', unsafe_allow_html=True)
+
+    if img_path and os.path.exists(img_path):
+        st.image(img_path, caption=f"🎨 イラストでわかる「{curr}」", use_container_width=True)
 
     view_choice = st.radio(
         "学習アプローチを選択してください（閲覧行動ログが研究データとして記録されます）：",
@@ -470,9 +528,14 @@ elif st.session_state.app_mode == "用語を勉強する":
     elif view_choice == "🌍 実社会での活用例":
         st.success(prac_ex if prac_ex else "🌍 実社会での活用例データは準備中です。")
     elif view_choice == "📖 試験対策（公式定義）":
-        st.warning(off_def if off_def else "📖 公式定義データは準備中です。")
-        if url:
-            st.caption(f"[過去問道場の関連ページを確認する]({url})")
+        link_to_open = url
+        if not link_to_open or str(link_to_open).strip() in ["", "nan", "None"]:
+            import urllib.parse
+            encoded_term = urllib.parse.quote(curr)
+            link_to_open = f"https://www.fe-siken.com/keyword/{encoded_term}.html"
+            
+        st.markdown("### 📖 試験対策（公式定義）")
+        st.caption(f"[🔗 過去問道場の関連ページを確認する]({link_to_open})")
 
 # ---------------------------------------------------------
 # メイン画面：問題演習モード
@@ -718,11 +781,20 @@ elif st.session_state.app_mode == "問題を解く":
                             conn.commit()
                         st.toast(f"「{q_term}」を要復習リストに追加しました！")
 
+                # イラストの表示
+                with get_db() as conn_img:
+                    c_img = conn_img.cursor()
+                    c_img.execute("SELECT image_path FROM terms WHERE term_name = ?", (q_term,))
+                    r_img = c_img.fetchone()
+                    q_img_path = r_img[0] if r_img else None
+
+                if q_img_path and os.path.exists(q_img_path):
+                    with st.expander("🎨 概念イメージイラストを見る", expanded=True):
+                        st.image(q_img_path, caption=f"{q_term} の図解・解法ステップ", use_container_width=True)
+
                 st.markdown("---")
                 st.subheader("💡 学習者属性別 詳細解説")
                 
-                # ユーザー属性に適合する解説を主タブとして前面表示
-                # 最初は要点のみが表示され、詳細解説は「▼ もっと見る」アコーディオンで展開可能
                 if st.session_state.major_type == "情報科学科・理系":
                     tab_main, tab_sub = st.tabs(["🔬 情報科学科向け技術解説（主解説）", "🌱 初学者・文系向け解説"])
                     with tab_main:
