@@ -469,29 +469,20 @@ elif st.session_state.app_mode == "用語を勉強する":
     
     with get_db() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT id, category, sub_category, official_def, url, image_path FROM terms WHERE term_name = ?", (curr,))
-        term_row = cur.fetchone()
+        cur.execute("""
+            SELECT category, sub_category, metaphor_def, practical_ex, official_def, exam_point_text, url, image_path 
+            FROM terms WHERE term_name = ?
+        """, (curr,))
+        row = cur.fetchone()
         
-        term_id = term_row[0] if term_row else None
-        cat = term_row[1] if term_row else "テクノロジ系"
-        sub_cat = term_row[2] if term_row else "未分類"
-        off_def = term_row[3] if term_row else ""
-        url = term_row[4] if term_row else ""
-        img_path = term_row[5] if term_row and len(term_row) > 5 else None
-
-        int_def = ""
-        if term_id:
-            cur.execute("SELECT metaphor_text FROM term_metaphors WHERE term_id = ? AND source_ai = 'Final'", (term_id,))
-            m_row = cur.fetchone()
-            if m_row:
-                int_def = m_row[0]
-
-        prac_ex = ""
-        if term_id:
-            cur.execute("SELECT example_text FROM term_examples WHERE term_id = ? AND source_ai = 'Final'", (term_id,))
-            e_row = cur.fetchone()
-            if e_row:
-                prac_ex = e_row[0]
+        cat = row[0] if row and row[0] else "テクノロジ系"
+        sub_cat = row[1] if row and row[1] else "未分類"
+        int_def = row[2] if row and row[2] else ""
+        prac_ex = row[3] if row and row[3] else ""
+        off_def = row[4] if row and row[4] else ""
+        exam_text = row[5] if row and row[5] else ""
+        url = row[6] if row and row[6] else ""
+        img_path = row[7] if row and row[7] else None
 
         cur.execute("INSERT INTO term_logs (user_id, term_name, category) VALUES (?, ?, ?)",
                     (st.session_state.user_id, curr, cat))
@@ -500,22 +491,20 @@ elif st.session_state.app_mode == "用語を勉強する":
     st.caption(f"📚 {cat} ＞ {sub_cat}")
     st.markdown(f'<h1 translate="no">💻 {curr}</h1>', unsafe_allow_html=True)
 
-    if img_path and os.path.exists(img_path):
-        st.image(img_path, caption=f"🎨 イラストでわかる「{curr}」", use_container_width=True)
-
+    # ラジオボタン（試験対策を最優先で左端に配置）
     view_choice = st.radio(
         "学習アプローチを選択してください（閲覧行動ログが研究データとして記録されます）：",
-        ["💡 直感理解（日常の比喩）", "🌍 実社会での活用例", "📖 試験対策（公式定義）"],
+        ["📖 試験対策（着眼点と概念図解）", "💡 直感理解（日常の比喩）", "🌍 実社会での活用例"],
         horizontal=True,
         key=f"view_choice_{curr}"
     )
 
     content_type_map = {
+        "📖 試験対策（着眼点と概念図解）": "exam_strategy",
         "💡 直感理解（日常の比喩）": "metaphor",
-        "🌍 実社会での活用例": "example",
-        "📖 試験対策（公式定義）": "official"
+        "🌍 実社会での活用例": "example"
     }
-    selected_type = content_type_map[view_choice]
+    selected_type = content_type_map.get(view_choice, "exam_strategy")
 
     with get_db() as conn:
         cur = conn.cursor()
@@ -523,20 +512,47 @@ elif st.session_state.app_mode == "用語を勉強する":
                     (st.session_state.user_id, curr, selected_type))
         conn.commit()
 
-    if view_choice == "💡 直感理解（日常の比喩）":
-        st.info(int_def if int_def else "💡 直感的比喩データは準備中です。")
-    elif view_choice == "🌍 実社会での活用例":
-        st.success(prac_ex if prac_ex else "🌍 実社会での活用例データは準備中です。")
-    elif view_choice == "📖 試験対策（公式定義）":
-        link_to_open = url
-        if not link_to_open or str(link_to_open).strip() in ["", "nan", "None"]:
-            import urllib.parse
-            encoded_term = urllib.parse.quote(curr)
-            link_to_open = f"https://www.fe-siken.com/keyword/{encoded_term}.html"
-            
-        st.markdown("### 📖 試験対策（公式定義）")
-        st.caption(f"[🔗 過去問道場の関連ページを確認する]({link_to_open})")
+    st.markdown("---")
 
+    # 各タブの表示内容
+    if view_choice == "📖 試験対策（着眼点と概念図解）":
+        st.markdown("### 🎯 試験攻略の着眼点・キーワード")
+        if exam_text:
+            st.info(exam_text)
+        else:
+            st.warning("⚠️ この用語の「試験直結解説テキスト（exam_point_text）」は現在作成・準備中です。")
+
+        if img_path and os.path.exists(img_path):
+            st.image(img_path, caption=f"🎨 イラストでわかる「{curr}」", use_container_width=True)
+
+        target_link = url if url else f"https://www.fe-siken.com/keyword/{curr}.html"
+        st.markdown(f"""
+        <a href="{target_link}" target="_blank" style="text-decoration:none;">
+            <div style="background-color:#F0FDF4; border:1px solid #86EFAC; padding:10px 14px; border-radius:8px; margin-top:14px; color:#166534; font-weight:bold; text-align:center;">
+                過去問を解く（過去問道場へジャンプ） ↗
+            </div>
+        </a>
+        """, unsafe_allow_html=True)
+
+    elif view_choice == "💡 直感理解（日常の比喩）":
+        st.markdown("### 💡 直感理解（日常の比喩）")
+        if int_def:
+            st.info(int_def)
+        else:
+            st.info("💡 日常の比喩解説は準備中です。")
+
+        if img_path and os.path.exists(img_path):
+            st.image(img_path, caption=f"🎨 イラストでわかる「{curr}」", use_container_width=True)
+
+    elif view_choice == "🌍 実社会での活用例":
+        st.markdown("### 🌍 実社会での活用例")
+        if prac_ex:
+            st.success(prac_ex)
+        else:
+            st.info("🌍 実社会での活用例データは準備中です。")
+
+        if img_path and os.path.exists(img_path):
+            st.image(img_path, caption=f"🎨 イラストでわかる「{curr}」", use_container_width=True)
 # ---------------------------------------------------------
 # メイン画面：問題演習モード
 # ---------------------------------------------------------
@@ -831,11 +847,9 @@ elif st.session_state.app_mode == "弱点復習リスト":
     with get_db() as conn:
         df_bm = pd.read_sql_query("""
         SELECT b.id as bm_id, b.question_id, b.term_name, b.created_at,
-               q.question_text, q.correct_ans, qeb.explanation as exp_beg, qea.explanation as exp_adv
+               t.question_text, t.correct_ans, t.explanation_beginner as exp_beg, t.explanation_advanced as exp_adv
         FROM quiz_bookmarks b
-        JOIN questions q ON b.question_id = q.id
-        LEFT JOIN question_explanations_beginner qeb ON q.id = qeb.question_id
-        LEFT JOIN question_explanations_advanced qea ON q.id = qea.question_id
+        JOIN terms_master t ON b.question_id = t.id
         WHERE b.user_id = ?
         ORDER BY b.created_at DESC
         """, conn, params=(st.session_state.user_id,))

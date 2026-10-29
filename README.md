@@ -1,53 +1,30 @@
-1. 【データ元】 fe_study_master_23sheets（CSVを読み込んでDBを作るプログラムを実行）
-2. 【データベース】 fe_study.db（DBからデータを引っ張ってきて画面に表示）
-3. 【アプリ画面】 app.py（Streamlit）
+# FE-AI Tutor (基本情報技術者試験 概念理解支援システム)
 
-# 基本情報技術者試験（FE）学習・実験システム
+基本情報技術者試験（科目A）の初学者向け学習支援システム。
+専門用語を排除した日常の比喩、実社会での活用例、16:9の横長概念図、属性別二層解説（初学者向け・理系向け）を提供し、直感的な理解を促します。
 
-基本情報技術者試験（科目A）の用語学習および理解度向上を目的としたWebアプリケーション・データベースシステム
-「直感的な例え話」「身近な実用例」「初級者向け解説」「上級者向け解説」および「科目A形式の4択予想問題」を備えている
+## システムアーキテクチャ
+- **Frontend / UI**: Streamlit (`app.py`)
+- **Database**: SQLite (`fe_study.db`)
+- **Master Dataset**: Excel (`fe_study_master_23sheets.xlsx`)
+- **LLM Integration**: Google Gemini 2.5 Flash via Vertex AI
 
-## このリポジトリの目的
+## 主要プログラム一覧
 
-1. **`fe_study_master.csv`**（「例え話」「実用例」「科目A予想問題」「文系学生向け解説」「情報科学生向け解説」が入ったCSV）を用意する
-2. そのCSVから **データベース（`fe_study.db`）** を作る
-3. そのデータベースを読み込んで **`app.py`（Streamlitアプリ）** で画面に表示する
+| ファイル名 | 役割・概要 |
+| :--- | :--- |
+| `app.py` | 学習用Webアプリケーション本体（用語学習、問題演習、学習ログ追跡） |
+| `rewrite_metaphors_7categories.py` | 重要7分野の比喩・実用例を日常言語へ全面リライトする生成スクリプト |
+| `evaluate_metaphors.py` | 比喩・実用例の3軸品質査読スクリプト（○/△/×判定、レジューム対応） |
+| `rebuild_all_tables.py` | ExcelマスターからDB（`terms`, `terms_master`）を完全再構築・同期 |
+| `generate_exam_diagrams.py` | 16:9横長概念図および試験直結テキストの生成パイプライン |
+| `generate_and_save_to_excel.py` | 正当選択問題（Q1）および二層解説の自動生成スクリプト |
+| `generate_q2_to_excel.py` | 不適当選択問題（Q2）および選択肢別解説の自動生成スクリプト |
+| `evaluate_questions.py` | 生成された問題・選択肢・解説の整合性ファクトチェック評価スクリプト |
+| `compress_images.py` | `static/images/` 内の画像容量をWeb表示用に圧縮・最適化するツール |
 
----
-
-## 実行手順
-
-### 1. 準備：リポジトリのクローン（初回のみ）
-**git clone [https://github.com/runrun920/de-ta-base.git](https://github.com/runrun920/de-ta-base.git)
-cd de-ta-base**
-
-### 2. 必要なものを入れる
-**pip3 install pandas streamlit**
-
-**pip3 install pandas streamlit openpyxl google-genai**
-
-
-### 3. データ生成・メンテナンス用スクリプト（管理者向け）
-fe_study_master_23sheets.xlsx を読み込み、3つの個人アカウントのGoogle API を用いて未作成の用語に対する
-「直感的例え話」「身近な実用例」「科目A予想問題」「初級者向け解説」「上級者向け解説」を自動生成し、Excelに保存
-
-**PYTHONIOENCODING=utf-8 LC_ALL=en_US.UTF-8 python3 generate_and_save_to_excel.py**
-
-
-### 4. データベースを作る
-Excelファイル（fe_study_master_23sheets.xlsx）の内容をSQLiteデータベース（fe_study.db）に反映する
-
-**python3 sync_db.py**
-
-### 5. GitHubに保存する
-
-#### git add -A
-#### git commit -m "〇〇/3376 用語 登録完了"
-#### git add README.mdgit pull --rebase origin main && git push origin main
-
-
-### 6. アプリを起動
-1. **streamlit run app.py**
-  
-2. **streamlit run admin_app.py --server.port 8502**
-（※adminは管理者用画面。学習者の学習状況を見られる画面）
+## データファイル
+- `fe_study_master_23sheets.xlsx`: 全用語・全問題・全解説・比喩のマスターデータ
+- `fe_study.db`: アプリケーション用SQLiteデータベース（ログ記録含む）
+- `比喩・実用例_品質精査評価シート.xlsx`: 比喩・実用例の自動評価結果レポート
+- `基本情報問題・解説_品質精査評価シート.xlsx`: 問題文・解説の自動評価結果レポート
