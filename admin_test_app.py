@@ -1,29 +1,24 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import os
 import base64
 import requests
+import io
 
 # ---------------------------------------------------------
 # 1. 基本設定
 # ---------------------------------------------------------
 st.set_page_config(page_title="FE-AI Tutor | 管理者ダッシュボード", page_icon="📊", layout="wide")
 
-DB_FILE = "fe_study.db"
 LOG_FILE = "test_app.log"
 ADMIN_PASSWORD = "admin"  # 必要に応じてパスワードを変更してください
 
-def get_db():
-    return sqlite3.connect(DB_FILE)
-
-def fetch_github_log():
-    """GitHubリポジトリから最新のログファイルを取得（未設定時はローカルを参照）"""
+def fetch_github_file(path):
+    """GitHubリポジトリからテキスト/CSVファイルの内容を取得する共通関数"""
     try:
         token = st.secrets["GITHUB_TOKEN"]
         repo = st.secrets["GITHUB_REPO"]
         branch = st.secrets.get("GITHUB_BRANCH", "test")
-        path = st.secrets.get("LOG_FILE_PATH", "test_app.log")
 
         url = f"https://api.github.com/repos/{repo}/contents/{path}"
         headers = {
@@ -33,16 +28,15 @@ def fetch_github_log():
         res = requests.get(url, headers=headers, params={"ref": branch}, timeout=5)
         if res.status_code == 200:
             data = res.json()
-            content = base64.b64decode(data["content"]).decode("utf-8")
+            content = base64.b64decode(data["content"]).decode("utf-8-sig")
             return content, "GitHub"
         elif res.status_code == 404:
-            return None, "GitHub（ファイル未作成）"
+            return None, "未作成"
         else:
-            return f"GitHub取得エラー (Status: {res.status_code})", "Error"
+            return None, f"Error ({res.status_code})"
     except Exception:
-        # ローカル環境などSecrets未設定時はローカルのlogファイルを読む
-        if os.path.exists(LOG_FILE):
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8-sig") as f:
                 return f.read(), "ローカル"
         return None, "未設定"
 
@@ -79,53 +73,48 @@ with st.sidebar:
         st.rerun()
 
 # ---------------------------------------------------------
-# 4. データ取得処理
+# 4. データ取得＆集計処理（GitHub連携）
 # ---------------------------------------------------------
 st.title("📊 効果検証システム 管理者用データ一覧")
 
-has_db = os.path.exists(DB_FILE)
+results_csv, _ = fetch_github_file("test_results.csv")
+logs_csv, _ = fetch_github_file("test_logs.csv")
 
-if has_db:
-    conn = get_db()
+df_summary = pd.DataFrame()
+if results_csv:
+    df_res = pd.read_csv(io.StringIO(results_csv), dtype={"学籍番号_ID": str})
+    if not df_res.empty:
+        # 同一ユーザー・同一テスト種別で複数回ある場合は最新を採用
+        df_res_latest = df_res.drop_duplicates(subset=["学籍番号_ID", "テスト種別"], keep="last")
+        
+        users_info = df_res.groupby("学籍番号_ID", as_index=False).agg({
+            "アカウント名": "last",
+            "専攻": "last",
+            "完了日時": "max"
+        }).rename(columns={"完了日時": "最終受験日時"})
 
-    query_summary = """
-    SELECT 
-        u.user_id AS 学籍番号_ID,
-        u.user_name AS アカウント名,
-        u.last_login AS 最終ログイン日時,
-        CASE WHEN pre.score IS NOT NULL THEN '✅ 受験済' ELSE '❌ 未受験' END AS 事前テスト状況,
-        pre.score AS 事前点数,
-        pre.accuracy_rate AS 事前正答率,
-        CASE WHEN post.score IS NOT NULL THEN '✅ 受験済' ELSE '❌ 未受験' END AS 事後テスト状況,
-        post.score AS 事後点数,
-        post.accuracy_rate AS 事後正答率,
-        (post.score - pre.score) AS 点数変化
-    FROM users u
-    LEFT JOIN test_results pre ON u.user_id = pre.user_id AND pre.test_type = '事前テスト'
-    LEFT JOIN test_results post ON u.user_id = post.user_id AND post.test_type = '事後テスト'
-    ORDER BY u.last_login DESC
-    """
-    df_summary = pd.read_sql(query_summary, conn)
+        pre_df = df_res_latest[df_res_latest["テスト種別"] == "事前テスト"][["学籍番号_ID", "点数", "正答率"]].rename(
+            columns={"点数": "事前点数", "正答率": "事前正答率"}
+        )
+        post_df = df_res_latest[df_res_latest["テスト種別"] == "事後テスト"][["学籍番号_ID", "点数", "正答率"]].rename(
+            columns={"点数": "事後点数", "正答率": "事後正答率"}
+        )
 
-    query_logs = """
-    SELECT 
-        l.answered_at AS 解答日時,
-        l.user_id AS 学籍番号_ID,
-        u.user_name AS アカウント名,
-        l.test_type AS テスト種別,
-        l.sub_category AS 分野,
-        l.term_name AS 対象用語,
-        l.selected_choice AS 選択解答,
-        l.correct_ans AS 正解,
-        CASE WHEN l.is_correct = 1 THEN '○' ELSE '×' END AS 正誤
-    FROM test_logs l
-    LEFT JOIN users u ON l.user_id = u.user_id
-    ORDER BY l.id DESC
-    """
-    df_logs = pd.read_sql(query_logs, conn)
-    conn.close()
+        df_summary = users_info.merge(pre_df, on="学籍番号_ID", how="left").merge(post_df, on="学籍番号_ID", how="left")
+        df_summary["事前テスト状況"] = df_summary["事前点数"].apply(lambda x: "✅ 受験済" if pd.notna(x) else "❌ 未受験")
+        df_summary["事後テスト状況"] = df_summary["事後点数"].apply(lambda x: "✅ 受験済" if pd.notna(x) else "❌ 未受験")
+        df_summary["点数変化"] = df_summary["事後点数"] - df_summary["事前点数"]
 
-    # サマリー指標（KPI）の表示
+        # 列の並び順を整理
+        cols_order = [
+            "学籍番号_ID", "アカウント名", "専攻", "最終受験日時",
+            "事前テスト状況", "事前点数", "事前正答率",
+            "事後テスト状況", "事後点数", "事後正答率", "点数変化"
+        ]
+        df_summary = df_summary[cols_order].sort_values(by="最終受験日時", ascending=False)
+
+# サマリー指標（KPI）の表示
+if not df_summary.empty:
     total_users = len(df_summary)
     pre_done = len(df_summary[df_summary["事前テスト状況"] == "✅ 受験済"])
     post_done = len(df_summary[df_summary["事後テスト状況"] == "✅ 受験済"])
@@ -133,12 +122,11 @@ if has_db:
     avg_post = df_summary["事後点数"].mean()
 
     col1, col2, col3, col4, col5 = st.columns(5)
-    col1.metric("総登録ユーザー数", f"{total_users} 名")
+    col1.metric("総受験ユーザー数", f"{total_users} 名")
     col2.metric("事前テスト完了", f"{pre_done} / {total_users} 名")
     col3.metric("事後テスト完了", f"{post_done} / {total_users} 名")
     col4.metric("事前テスト平均点", f"{avg_pre:.1f} 点" if pd.notna(avg_pre) else "-")
     col5.metric("事後テスト平均点", f"{avg_post:.1f} 点" if pd.notna(avg_post) else "-")
-
     st.markdown("---")
 
 # ---------------------------------------------------------
@@ -151,8 +139,8 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 with tab1:
-    if not has_db:
-        st.info("現在このサーバー内にローカルDB（`fe_study.db`）は存在しません。操作ログは右の「📜 操作ログ（GitHub連携）」タブから確認できます。")
+    if df_summary.empty:
+        st.info("まだテスト完了データ（`test_results.csv`）がありません。被験者がテストを提出するとここに自動反映されます。")
     else:
         st.subheader("被験者ごとの受験ステータスと点数")
         filter_status = st.radio(
@@ -192,10 +180,13 @@ with tab1:
         )
 
 with tab2:
-    if not has_db:
-        st.info("現在このサーバー内にローカルDB（`fe_study.db`）は存在しません。")
+    if not logs_csv:
+        st.info("まだ詳細解答ログ（`test_logs.csv`）がありません。被験者がテストを提出するとここに自動反映されます。")
     else:
         st.subheader("全被験者の1問ごとの解答履歴")
+        df_logs = pd.read_csv(io.StringIO(logs_csv), dtype={"学籍番号_ID": str})
+        df_logs = df_logs.iloc[::-1]  # 新しい解答を上に表示
+
         search_user = st.text_input("学籍番号またはアカウント名で検索：", placeholder="例: G23937 または 奥田")
         df_logs_filtered = df_logs.copy()
         if search_user.strip():
@@ -216,21 +207,20 @@ with tab2:
 
 with tab3:
     st.subheader("📜 システム操作ログ（test_app.log）")
-    log_content, source_type = fetch_github_log()
+    log_path = st.secrets.get("LOG_FILE_PATH", LOG_FILE) if "LOG_FILE_PATH" in st.secrets else LOG_FILE
+    log_content, source_type = fetch_github_file(log_path)
 
     if log_content is None:
-        st.warning(f"ログファイルがまだ作成されていません（参照先: {source_type}）。被験者がテスト画面でログインすると自動的に作成されます。")
+        st.warning(f"ログファイルがまだ作成されていません（状態: {source_type}）。")
     else:
         st.caption(f"取得元: **{source_type}** ｜ 左サイドバーの「🔄 データを最新に更新」で最新のログを再読み込みできます。")
 
-        # 学籍番号やイベント名での絞り込み検索
         log_filter = st.text_input("ログ内のキーワードで絞り込み検索：", placeholder="例: G23908 や TEST_COMPLETED")
         lines = log_content.splitlines()
 
         if log_filter.strip():
             lines = [line for line in lines if log_filter.strip() in line]
 
-        # 新しいログが上に来るように逆順表示（古い順がいい場合は [::-1] を消してください）
         display_text = "\n".join(reversed(lines))
 
         st.text_area(
