@@ -18,3 +18,4 @@
 [2026-11-24 15:35:47] [INFO]: PRE_TEST_START: user_id=test02-2
 [2026-11-24 15:42:54] [INFO]: TEST_COMPLETED: user=test02-2, type=事前テスト, score=4/10
 [2026-11-24 15:44:48] [INFO]: TEST_USER_LOGIN: user_id=test03, name=寺島葵, major=情報科学科・理系
+[2026-11-24 15:44:52] [INFO]: PRE_TEST_START: user_id=test03
