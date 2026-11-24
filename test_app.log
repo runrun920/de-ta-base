@@ -3,3 +3,4 @@
 [2026-11-24 14:41:28] [INFO]: TEST_COMPLETED: user=G23908, type=事前テスト, score=1/10
 [2026-11-24 14:48:24] [INFO]: TEST_USER_LOGIN: user_id=G23908, name=松本愛実, major=情報科学科・理系
 [2026-11-24 14:50:21] [INFO]: POST_TEST_START: user_id=G23908
+[2026-11-24 14:50:35] [INFO]: TEST_COMPLETED: user=G23908, type=事後テスト, score=1/10
