@@ -5,6 +5,9 @@ import os
 import logging
 import pandas as pd
 import time
+import base64
+import requests
+from datetime import datetime, timezone, timedelta
 import streamlit.components.v1 as components
 
 # ---------------------------------------------------------
@@ -25,14 +28,67 @@ DB_FILE = "fe_study.db"
 LOG_FILE = "test_app.log"
 TEST_LIMIT_SECONDS = 7 * 60  # 制限時間：7分（420秒）
 
+class GitHubLogHandler(logging.Handler):
+    """ログが発生するたびにGitHubリポジトリ上のファイルへ追記するハンドラ"""
+    def emit(self, record):
+        log_entry = self.format(record) + "\n"
+        try:
+            token = st.secrets["GITHUB_TOKEN"]
+            repo = st.secrets["GITHUB_REPO"]
+            branch = st.secrets.get("GITHUB_BRANCH", "test")
+            path = st.secrets.get("LOG_FILE_PATH", "test_app.log")
+        except Exception:
+            return
+
+        url = f"https://api.github.com/repos/{repo}/contents/{path}"
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+
+        try:
+            res = requests.get(url, headers=headers, params={"ref": branch}, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                sha = data["sha"]
+                current_content = base64.b64decode(data["content"]).decode("utf-8")
+            else:
+                sha = None
+                current_content = ""
+
+            new_content = current_content + log_entry
+            encoded_content = base64.b64encode(new_content.encode("utf-8")).decode("utf-8")
+
+            payload = {
+                "message": "Update test_app.log from Streamlit",
+                "content": encoded_content,
+                "branch": branch
+            }
+            if sha:
+                payload["sha"] = sha
+
+            requests.put(url, headers=headers, json=payload, timeout=5)
+        except Exception:
+            pass
+
 def setup_logger():
     logger = logging.getLogger("FE_TEST_LOGGER")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
+        # クラウド環境でも日本時間（JST）で記録する設定
+        jst = timezone(timedelta(hours=9))
         formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        formatter.converter = lambda *args: datetime.now(jst).timetuple()
+
+        # ローカル保存用
         fh = logging.FileHandler(LOG_FILE, encoding='utf-8')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
+
+        # GitHub自動保存用
+        gh = GitHubLogHandler()
+        gh.setFormatter(formatter)
+        logger.addHandler(gh)
     return logger
 
 logger = setup_logger()
