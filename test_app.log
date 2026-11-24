@@ -8,3 +8,4 @@
 [2026-11-24 15:19:28] [INFO]: PRE_TEST_START: user_id=g23908
 [2026-11-24 15:19:47] [INFO]: TEST_COMPLETED: user=g23908, type=事前テスト, score=1/10
 [2026-11-24 15:19:52] [INFO]: POST_TEST_START: user_id=g23908
+[2026-11-24 15:20:15] [INFO]: TEST_COMPLETED: user=g23908, type=事後テスト, score=6/10
