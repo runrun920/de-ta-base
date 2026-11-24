@@ -7,6 +7,8 @@ import pandas as pd
 import time
 import base64
 import requests
+import csv
+import io
 from datetime import datetime, timezone, timedelta
 import streamlit.components.v1 as components
 
@@ -71,21 +73,69 @@ class GitHubLogHandler(logging.Handler):
         except Exception:
             pass
 
+def append_csv_to_github(filename, rows_list, header_list):
+    """テスト結果や詳細解答履歴をGitHub上のCSVファイルに追記する関数"""
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        repo = st.secrets["GITHUB_REPO"]
+        branch = st.secrets.get("GITHUB_BRANCH", "test")
+    except Exception:
+        return
+
+    url = f"https://api.github.com/repos/{repo}/contents/{filename}"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    try:
+        res = requests.get(url, headers=headers, params={"ref": branch}, timeout=5)
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        if res.status_code == 200:
+            data = res.json()
+            sha = data["sha"]
+            current_content = base64.b64decode(data["content"]).decode("utf-8-sig")
+            if current_content and not current_content.endswith("\n"):
+                current_content += "\n"
+        else:
+            sha = None
+            writer.writerow(header_list)
+            current_content = output.getvalue()
+            output = io.StringIO()
+            writer = csv.writer(output)
+
+        for row in rows_list:
+            writer.writerow(row)
+
+        new_content = current_content + output.getvalue()
+        encoded_content = base64.b64encode(new_content.encode("utf-8-sig")).decode("utf-8")
+
+        payload = {
+            "message": f"Update {filename} from Streamlit",
+            "content": encoded_content,
+            "branch": branch
+        }
+        if sha:
+            payload["sha"] = sha
+
+        requests.put(url, headers=headers, json=payload, timeout=5)
+    except Exception:
+        pass
+
 def setup_logger():
     logger = logging.getLogger("FE_TEST_LOGGER")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
-        # クラウド環境でも日本時間（JST）で記録する設定
         jst = timezone(timedelta(hours=9))
         formatter = logging.Formatter('[%(asctime)s] [%(levelname)s]: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         formatter.converter = lambda *args: datetime.now(jst).timetuple()
 
-        # ローカル保存用
         fh = logging.FileHandler(LOG_FILE, encoding='utf-8')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
 
-        # GitHub自動保存用
         gh = GitHubLogHandler()
         gh.setFormatter(formatter)
         logger.addHandler(gh)
@@ -160,7 +210,6 @@ def init_and_setup_db():
     )
     """)
 
-    # 事前テストデータ（10問）
     pretest_data = [
         ("プログラムの格納場所", "コンピュータ構成要素", "コンピュータの電源投入時に最初に実行されるプログラムの格納に適しているものはどれか。ここで、主記憶のバッテリバックアップはしないものとする。", "DRAM", "HDD", "ROM", "SRAM", "ウ", ""),
         ("USBの特徴", "コンピュータ構成要素", "USBの特徴はどれか。", "PCなどの小型コンピュータと、磁気ディスク、レーザプリンターなどの周辺機器を接続するパラレルインタフェースである。", "音声や映像など、リアルタイム性の必要なデータ転送に適した高速な転送方法を採用しており、FireWireとも呼ばれている。", "シリアルインタフェースであり、元来はモデムを接続する規格であったが、PCと周辺機器を接続するのにも使われる。", "三つのデータ転送モードがあり、ハイスピードモードは外付け磁気ディスクなどの接続に使用される。", "エ", ""),
@@ -174,7 +223,6 @@ def init_and_setup_db():
         ("親和図法", "企業活動", "親和図法を説明したものはどれか。", "事象の進展とともに様々な事象が想定される問題について対応策を検討し、望ましい結果に至るプロセスを定める方法である。", "収集した情報を相互の関連によってグループ化し、解決すべき問題点を明確にする方法である。", "複雑な要因の絡み合う事象について、その事象間の因果関係を明らかにする方法である。", "目的・目標を達成するための手段・方策を順次展開し、最適な手段・方策を追求していく方法である。", "イ", "")
     ]
 
-    # 事後テストデータ（10問）
     posttest_data = [
         ("ページプリンター", "コンピュータ構成要素", "ページプリンターで、画像と漢字コードが混在しているデータを印刷するための処理方法に関する記述として、適切なものはどれか。", "パソコンが漢字データをビットマップ形式に展開した後、プリンターが画像と合成して、ライン単位で印刷イメージを作る。", "プリンターが画像と漢字データをラインごとのビット列に展開して、ラインごとに順次印刷する。", "プリンターが画像をビットマップ形式に展開して印刷イメージを作り、漢字フォントにはパソコンのフォントファイルを使用する。", "プリンター又はパソコンのプリンタードライバのどちらかが、画像と漢字データをビットマップ形式に展開して、印刷イメージを作る。", "エ", ""),
         ("ROE", "コンピュータ構成要素", "ROEを説明したものはどれか。", "企業が保有する総資産に対する収益性を示す指標", "自己資本と総資本の比率から、財務体質の健全性を示す指標", "自己資本と他人資本の有効活用の度合いを図る指標", "自己資本に対する収益性を示す指標", "エ", ""),
@@ -274,7 +322,7 @@ if not st.session_state.logged_in:
                 st.session_state.user_name = input_name.strip()
                 st.session_state.major_type = input_major
                 
-                logger.info(f"TEST_USER_LOGIN: user_id={input_uid.strip()}, major={input_major}")
+                logger.info(f"TEST_USER_LOGIN: user_id={input_uid.strip()}, name={input_name.strip()}, major={input_major}")
                 st.rerun()
             else:
                 st.error("学籍番号とお名前を入力してください。")
@@ -344,12 +392,16 @@ def generate_test_questions(test_type):
     return questions
 
 def save_and_submit_test(test_type, total):
-    """解答結果を保存しテストを提出完了にする共通関数"""
+    """解答結果をローカルDBとGitHub CSVの両方に保存する共通関数"""
     conn = get_db()
     cur = conn.cursor()
     correct_count = 0
+    jst = timezone(timedelta(hours=9))
+    now_str = datetime.now(jst).strftime('%Y-%m-%d %H:%M:%S')
     
     q_list = st.session_state.test_questions
+    detail_csv_rows = []
+
     for i, q in enumerate(q_list):
         q_id, q_term, q_sub_cat, q_text, c_a, c_b, c_c, c_d, c_ans, exp = q
         a_data = st.session_state.test_user_answers.get(i, {})
@@ -363,6 +415,18 @@ def save_and_submit_test(test_type, total):
         INSERT INTO test_logs (user_id, test_type, question_id, term_name, sub_category, selected_choice, correct_ans, is_correct)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (st.session_state.user_id, test_type, q_id, q_term, q_sub_cat, selected_choice, c_ans, is_corr))
+
+        detail_csv_rows.append([
+            now_str,
+            st.session_state.user_id,
+            st.session_state.user_name,
+            test_type,
+            q_sub_cat,
+            q_term,
+            selected_choice,
+            c_ans.strip(),
+            "○" if is_corr else "×"
+        ])
     
     acc_rate = (correct_count / total) * 100
     cur.execute("""
@@ -373,11 +437,22 @@ def save_and_submit_test(test_type, total):
     
     conn.commit()
     conn.close()
+
+    # GitHubへ詳細解答履歴とテスト結果をCSV保存
+    append_csv_to_github(
+        "test_logs.csv",
+        detail_csv_rows,
+        ["解答日時", "学籍番号_ID", "アカウント名", "テスト種別", "分野", "対象用語", "選択解答", "正解", "正誤"]
+    )
+    append_csv_to_github(
+        "test_results.csv",
+        [[now_str, st.session_state.user_id, st.session_state.user_name, st.session_state.major_type, test_type, correct_count, total, round(acc_rate, 1)]],
+        ["完了日時", "学籍番号_ID", "アカウント名", "専攻", "テスト種別", "点数", "満点", "正答率"]
+    )
     
     logger.info(f"TEST_COMPLETED: user={st.session_state.user_id}, type={test_type}, score={correct_count}/{total}")
     st.session_state.test_mode = "RESULT_VIEW"
 
-# JavaScriptによる完全独立型のタイマーコンポーネント
 def render_javascript_timer(start_timestamp, limit_seconds):
     timer_html = f"""
     <div id="timer-box" style="text-align: right; font-size: 22px; font-weight: bold; color: darkorange; font-family: sans-serif;">
@@ -413,8 +488,6 @@ def render_javascript_timer(start_timestamp, limit_seconds):
 # ---------------------------------------------------------
 # 7. メイン画面の挙動制御
 # ---------------------------------------------------------
-
-# 【1. ホーム画面】
 if st.session_state.test_mode == "HOME":
     st.title("📝 効果測定システム（事前・事後テスト）")
     st.write("学習システムの利用効果を検証するため、学習前と学習後にそれぞれ10問のテストを行います。")
@@ -466,21 +539,18 @@ if st.session_state.test_mode == "HOME":
             if not can_start:
                 st.caption("⚠️ 事前テスト完了後に開放されます。")
 
-# 【2. テスト解答画面】
 elif st.session_state.test_mode == "TEST_RUN":
     q_list = st.session_state.test_questions
     idx = st.session_state.test_index
     total = len(q_list)
     test_type = st.session_state.current_test_type
 
-    # タイトルとJavaScriptタイマー表示
     col_title, col_timer = st.columns([2, 1])
     with col_title:
         st.markdown(f"## 📝 {test_type} （{idx + 1} / {total} 問）")
     with col_timer:
         render_javascript_timer(int(st.session_state.start_time), TEST_LIMIT_SECONDS)
 
-    # タイムアップ（時間切れ）判定
     elapsed_time = time.time() - st.session_state.start_time
     if elapsed_time >= TEST_LIMIT_SECONDS:
         st.error("⏰ 制限時間の7分が経過しました。自動的に解答を提出します。")
@@ -492,11 +562,9 @@ elif st.session_state.test_mode == "TEST_RUN":
         q_id, q_term, q_sub_cat, q_text, c_a, c_b, c_c, c_d, c_ans, exp = q
 
         st.progress((idx + 1) / total)
-        
         st.markdown(f"### Q{idx + 1}. {q_text}")
 
         choices = [f"ア: {c_a}", f"イ: {c_b}", f"ウ: {c_c}", f"エ: {c_d}"]
-        
         already_selected = st.session_state.test_user_answers.get(idx, {}).get("selected_choice", None)
         default_index = [c[0] for c in choices].index(already_selected) if already_selected else 0
 
@@ -530,7 +598,6 @@ elif st.session_state.test_mode == "TEST_RUN":
                     save_and_submit_test(test_type, total)
                     st.rerun()
 
-# 【3. 結果表示画面】
 elif st.session_state.test_mode == "RESULT_VIEW":
     test_type = st.session_state.current_test_type
     st.title(f"🏆 {test_type} 結果")
