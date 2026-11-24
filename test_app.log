@@ -13,3 +13,4 @@
 [2026-11-24 15:24:12] [INFO]: PRE_TEST_START: user_id=test01
 [2026-11-24 15:25:21] [INFO]: TEST_USER_LOGIN: user_id=g23908, name=松本愛実, major=情報科学科・理系
 [2026-11-24 15:25:53] [INFO]: TEST_COMPLETED: user=test01, type=事前テスト, score=5/10
+[2026-11-24 15:30:02] [INFO]: TEST_USER_LOGIN: user_id=test02, name=松本愛実, major=情報科学科・理系
